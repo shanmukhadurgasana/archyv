@@ -6,6 +6,8 @@ import { useAppContext } from "@/store/AppContext";
 
 interface FileCardProps {
   file: Document;
+  isAdminQueue?: boolean;
+  isTrash?: boolean;
 }
 
 export default function FileCard({ file }: FileCardProps) {
