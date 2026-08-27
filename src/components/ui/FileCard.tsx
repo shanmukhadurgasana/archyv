@@ -37,12 +37,20 @@ export default function FileCard({ file }: FileCardProps) {
       onClick={handleOpenFile}
       className="bg-white border border-[var(--border)] rounded-2xl p-5 flex flex-col hover:shadow-sm transition-shadow group relative cursor-pointer"
     >
-      <button 
-        onClick={(e) => { e.stopPropagation(); toggleStar(file.id); }}
-        className="absolute top-4 right-4 text-gray-300 group-hover:text-gray-400 z-10"
-      >
-        <Star className={clsx("w-5 h-5 transition-colors", isStarred ? "fill-[var(--archyv-accent)] text-[var(--archyv-accent)]" : "hover:text-[var(--archyv-accent)]")} />
-      </button>
+      <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
+        {file.status === "Pending" && (
+          <div className="flex items-center gap-1 text-[var(--archyv-accent-hover)] text-xs font-medium bg-orange-50 px-2 py-1 rounded-md">
+            <Clock className="w-3 h-3" />
+            Pending
+          </div>
+        )}
+        <button 
+          onClick={(e) => { e.stopPropagation(); toggleStar(file.id); }}
+          className="text-gray-300 group-hover:text-gray-400"
+        >
+          <Star className={clsx("w-5 h-5 transition-colors", isStarred ? "fill-[var(--archyv-accent)] text-[var(--archyv-accent)]" : "hover:text-[var(--archyv-accent)]")} />
+        </button>
+      </div>
       
       <div className="w-16 h-16 mb-4 relative opacity-90 group-hover:opacity-100 transition-opacity">
         <Image src="/logo.png" alt="File" fill className="object-contain" />
@@ -76,12 +84,6 @@ export default function FileCard({ file }: FileCardProps) {
         </div>
       </div>
 
-      {file.status === "Pending" && (
-        <div className="absolute top-4 right-4 flex items-center gap-1 text-[var(--archyv-accent-hover)] text-xs font-medium bg-orange-50 px-2 py-1 rounded-md">
-          <Clock className="w-3 h-3" />
-          Pending
-        </div>
-      )}
     </div>
   );
 }
