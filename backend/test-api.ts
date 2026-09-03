@@ -1,0 +1,1 @@
+const http = require('http'); const req = http.request('http://localhost:5000/api/documents?isStarred=true', { method: 'GET', headers: { cookie: 'token=dummy_if_needed' } }, (res) => { let data = ''; res.on('data', chunk => data += chunk); res.on('end', () => console.log(data)); }); req.end();

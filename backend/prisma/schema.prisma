@@ -1,0 +1,163 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                                   String            @id @default(uuid())
+  facultyId                            String?           @unique
+  name                                 String
+  email                                String            @unique
+  passwordHash                         String
+  role                                 Role
+  phone                                String?
+  status                               String?           @default("Active")
+  dateOfJoin                           DateTime?
+  lastLogin                            DateTime?
+  avatar                               String?
+  twoFactorSecret                      String?
+  isTwoFactorEnabled                   Boolean           @default(false)
+  adminId                              String?
+  departmentId                         String?
+  createdAt                            DateTime          @default(now())
+  updatedAt                            DateTime          @updatedAt
+  auditLogs                            AuditLog[]
+  Document_Document_approvedByIdToUser Document[]        @relation("Document_approvedByIdToUser")
+  Document_Document_rejectedByIdToUser Document[]        @relation("Document_rejectedByIdToUser")
+  uploadedDocs                         Document[]        @relation("UploadedBy")
+  starredDocs                          StarredDocument[]
+  createdByAdmin                       User?             @relation("CreatedBy", fields: [adminId], references: [id])
+  createdUsers                         User[]            @relation("CreatedBy")
+  department                           Department?       @relation(fields: [departmentId], references: [id])
+  sessions                             Session[]
+
+  @@index([adminId])
+  @@index([departmentId])
+}
+
+model Department {
+  id        String     @id @default(uuid())
+  name      String     @unique
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  documents Document[]
+  users     User[]
+}
+
+model Domain {
+  id        String     @id @default(uuid())
+  name      String     @unique
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  documents Document[]
+}
+
+model AcademicYear {
+  id        String     @id @default(uuid())
+  year      String     @unique
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  documents Document[]
+}
+
+model Document {
+  id                               String            @id @default(uuid())
+  name                             String
+  type                             DocumentType
+  sizeBytes                        BigInt?
+  cloudinaryUrl                    String?
+  cloudinaryPublicId               String?
+  status                           DocumentStatus    @default(PENDING)
+  uploadedById                     String
+  departmentId                     String?
+  domainId                         String
+  academicYearId                   String?
+  approvedById                     String?
+  approvedAt                       DateTime?
+  rejectedById                     String?
+  rejectedAt                       DateTime?
+  rejectionReason                  String?
+  isDeleted                        Boolean           @default(false)
+  deletedAt                        DateTime?
+  retentionUntil                   DateTime?
+  createdAt                        DateTime          @default(now())
+  updatedAt                        DateTime          @updatedAt
+  academicYear                     AcademicYear?     @relation(fields: [academicYearId], references: [id])
+  User_Document_approvedByIdToUser User?             @relation("Document_approvedByIdToUser", fields: [approvedById], references: [id])
+  department                       Department?       @relation(fields: [departmentId], references: [id])
+  domain                           Domain            @relation(fields: [domainId], references: [id])
+  User_Document_rejectedByIdToUser User?             @relation("Document_rejectedByIdToUser", fields: [rejectedById], references: [id])
+  uploadedBy                       User              @relation("UploadedBy", fields: [uploadedById], references: [id])
+  starredByUsers                   StarredDocument[]
+
+  @@index([uploadedById])
+  @@index([departmentId])
+  @@index([domainId])
+  @@index([academicYearId])
+  @@index([deletedAt])
+  @@index([createdAt])
+  @@index([isDeleted])
+  @@index([status])
+  @@index([status, isDeleted])
+}
+
+model StarredDocument {
+  userId     String
+  documentId String
+  starredAt  DateTime @default(now())
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, documentId])
+  @@index([userId])
+  @@index([documentId])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  action    String
+  target    String
+  domain    String?
+  userId    String?
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+enum Role {
+  ADMIN
+  FACULTY
+}
+
+enum DocumentType {
+  PDF
+  DOCX
+  XLSX
+  OTHER
+}
+
+enum DocumentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  userId       String
+  deviceInfo   String?
+  ipAddress    String?
+  createdAt    DateTime @default(now())
+  lastActivity DateTime @default(now())
+  isValid      Boolean  @default(true)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isValid])
+}
