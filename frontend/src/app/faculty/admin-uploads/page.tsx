@@ -5,42 +5,40 @@ import FileCard from "@/components/ui/FileCard";
 import FileRow from "@/components/ui/FileRow";
 import Pagination from "@/components/ui/Pagination";
 import SortDropdown from "@/components/ui/SortDropdown";
-import { LayoutGrid, List } from "lucide-react";
-import Image from "next/image";
+import { LayoutGrid, List, File } from "lucide-react";
 import { useDataView, SortOption } from "@/hooks/useDataView";
 import clsx from "clsx";
 import { useAppContext } from "@/store/AppContext";
 
-export default function FacultyStarred() {
-  const { documents, starredDocs, currentUser } = useAppContext();
-
-  // Local filtering for starred docs to prevent overriding the global documents cache
-  const userStarredIds = currentUser ? starredDocs[currentUser.id] || [] : [];
-  const starredFiles = documents.filter(f => !f.isDeleted && (f.isStarred || userStarredIds.includes(f.id)));
+export default function FacultyAdminUploads() {
+  const { documents, currentUser } = useAppContext();
+  
+  // Filter for files uploaded by admin and not deleted
+  const adminFiles = documents.filter(f => !f.isDeleted && f.uploadedById !== currentUser?.id);
 
   const {
     sortBy, setSortBy,
     currentPage, totalPages, handlePageChange,
     viewMode, setViewMode,
     paginatedData, totalItems
-  } = useDataView(starredFiles, "Newest first", 10);
+  } = useDataView(adminFiles, "Newest first", 10);
 
   return (
     <div>
-      <PageHeader
-        title="Starred"
-        subtitle="Files you have starred for quick access."
+      <PageHeader 
+        title="Admin Uploads" 
+        subtitle="Files uploaded by your admin and shared with you."
       >
         <SortDropdown value={sortBy} onChange={setSortBy} />
-
+        
         <div className="flex bg-white border border-[var(--border)] rounded-lg overflow-hidden">
-          <button
+          <button 
             onClick={() => setViewMode("grid")}
             className={clsx("p-2 transition-colors", viewMode === "grid" ? "bg-gray-50 text-foreground" : "text-gray-400 hover:text-foreground hover:bg-gray-50")}
           >
             <LayoutGrid className="w-4 h-4" />
           </button>
-          <button
+          <button 
             onClick={() => setViewMode("list")}
             className={clsx("p-2 transition-colors", viewMode === "list" ? "bg-gray-50 text-foreground" : "text-gray-400 hover:text-foreground hover:bg-gray-50")}
           >
@@ -73,26 +71,26 @@ export default function FacultyStarred() {
               </div>
             </div>
           )}
-
-          <Pagination
+          
+          <Pagination 
             currentPage={currentPage}
             totalPages={totalPages}
             onPageChange={handlePageChange}
             totalItems={totalItems}
             itemsPerPage={10}
-            label="starred files"
+            label="admin uploads"
           />
         </>
       ) : (
-        <div className="bg-white border border-[var(--border)] rounded-2xl p-12 flex flex-col items-center justify-center text-center mt-12">
-          <div className="w-24 h-24 relative mb-4 opacity-70">
-            <Image src="/logo.png" alt="No starred files" fill className="object-contain" />
-            <div className="absolute -bottom-2 -right-2 bg-[var(--archyv-accent)] rounded-full p-1.5 text-white shadow-md">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
-            </div>
+        <div className="bg-white/50 border border-[var(--border)] rounded-2xl p-24 flex flex-col items-center justify-center text-center mt-12 border-dashed">
+          <div className="w-20 h-20 rounded-full bg-[var(--archyv-accent)]/10 flex items-center justify-center mb-6">
+            <File className="w-8 h-8 text-foreground" />
           </div>
-          <h3 className="text-lg font-bold text-foreground mb-2">No starred files yet</h3>
-          <p className="text-sm text-gray-500 max-w-sm">Star important documents to access them quickly from here.</p>
+          <h3 className="text-2xl font-bold text-foreground mb-2">No files available</h3>
+          <p className="text-base text-gray-500 max-w-sm">
+            There are no files uploaded by your admin yet.<br/>
+            Files shared with you will appear here.
+          </p>
         </div>
       )}
     </div>

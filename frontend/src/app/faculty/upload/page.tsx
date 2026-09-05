@@ -5,11 +5,10 @@ import { UploadCloud, Folder, Info, Lock, FileText, X } from "lucide-react";
 import { useAppContext } from "@/store/AppContext";
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { saveFile } from "@/lib/storage";
 import CustomDropdown from "@/components/ui/CustomDropdown";
 
 export default function FacultyUpload() {
-  const { fetchDocuments, currentUser, addDocument } = useAppContext();
+  const { addDocument } = useAppContext();
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [department, setDepartment] = useState("CSD");
@@ -100,8 +99,8 @@ export default function FacultyUpload() {
         subtitle="Upload files (PDF, JPG, PNG, DOCX, PPTX) to be processed and organized."
       />
 
-      <div className="flex flex-col lg:flex-row gap-6 items-stretch">
-        <div className="flex-1 bg-white border border-[var(--border)] rounded-2xl p-8 flex flex-col h-full">
+      <div className="flex flex-col lg:flex-row gap-6 items-start pb-8">
+        <div className="flex-1 w-full bg-white border border-[var(--border)] rounded-2xl p-8 flex flex-col min-h-[500px] lg:sticky lg:top-6">
           <input 
             type="file" 
             ref={fileInputRef} 

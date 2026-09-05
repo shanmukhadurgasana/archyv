@@ -30,13 +30,14 @@ interface AppContextType extends Omit<AppState, "currentUser"> {
   currentUser: User | null;
   login: (email: string, password?: string) => Promise<boolean | { require2FA: boolean, tempToken: string }>;
   login2FA: (tempToken: string, token: string) => Promise<boolean>;
+  loginPasskey: () => Promise<{ success: boolean; role?: string; error?: string }>;
   logout: () => Promise<void>;
 
   deleteDocument: (id: string) => Promise<void>;
   restoreDocument: (id: string) => Promise<void>;
   permanentDeleteDocument: (id: string) => Promise<void>;
   toggleStar: (docId: string) => void;
-  createFaculty: (user: any) => Promise<boolean>;
+  createFaculty: (user: any) => Promise<{ success: boolean; error?: string }>;
   deleteFaculty: (id: string) => Promise<void>;
   updateFaculty: (id: string, updates: any) => Promise<void>;
   updateUserProfile: (updates: Partial<User>) => void;
@@ -254,6 +255,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       console.error("2FA Login failed:", e);
       return false;
+    }
+  };
+
+  const loginPasskey = async () => {
+    try {
+      const { startAuthentication } = await import("@simplewebauthn/browser");
+
+      // 1. Get options from server
+      const optionsRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/auth/passkey/generate-authentication-options`);
+      if (!optionsRes.ok) throw new Error("Failed to get authentication options");
+      const options = await optionsRes.json();
+
+      // 2. Authenticate with browser
+      let authResp;
+      try {
+        authResp = await startAuthentication(options);
+      } catch (err: any) {
+        if (err.name === 'NotAllowedError') {
+          return { success: false, error: "Passkey authentication cancelled." };
+        }
+        throw err;
+      }
+
+      // 3. Send response to server for verification
+      const verifyRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/auth/passkey/verify-authentication`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ ...authResp, challenge: options.challenge })
+      });
+
+      if (!verifyRes.ok) {
+        const errData = await verifyRes.json();
+        throw new Error(errData.message || "Failed to verify passkey");
+      }
+
+      const data = await verifyRes.json();
+      setCurrentUser(data.user);
+      setAuthStatus("authenticated");
+      initializeData(data.user);
+      
+      return { success: true, role: data.user.role };
+    } catch (e: any) {
+      console.error("Passkey login failed:", e);
+      return { success: false, error: e.message || "Passkey login failed" };
     }
   };
 
@@ -506,6 +552,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     starredDocs,
     login,
     login2FA,
+    loginPasskey,
     logout,
     deleteDocument,
     restoreDocument,

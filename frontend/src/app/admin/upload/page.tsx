@@ -5,19 +5,19 @@ import { UploadCloud, Folder, Info, Users, FileText, X } from "lucide-react";
 import { useAppContext } from "@/store/AppContext";
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { saveFile } from "@/lib/storage";
 import CustomDropdown from "@/components/ui/CustomDropdown";
 
 export default function AdminUpload() {
-  const { fetchDocuments, currentUser } = useAppContext();
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [department, setDepartment] = useState("CSD");
   const [domain, setDomain] = useState("Admissions");
   const [year, setYear] = useState("2023-24");
-  const [accessList, setAccessList] = useState<string[]>([]);
+  const [accessType, setAccessType] = useState<string>("None of the Faculty");
+  const [selectedFacultyNames, setSelectedFacultyNames] = useState<string[]>([]);
   
-  const facultyUsers = useAppContext().users.filter(u => u.role === "faculty").map(u => u.name);
+  const facultyUsers = useAppContext().users.filter(u => u.role === "faculty");
+  const facultyNames = facultyUsers.map(u => u.name);
   
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -69,9 +69,15 @@ export default function AdminUpload() {
       formData.append("department", department);
       formData.append("academicYear", year);
       
-      // Send access list as JSON string if present
-      if (accessList.length > 0) {
-        formData.append("accessList", JSON.stringify(accessList));
+      let finalAccessType = "NONE";
+      if (accessType === "All Faculty") finalAccessType = "ALL_FACULTY";
+      else if (accessType === "Select Faculty") finalAccessType = "SELECT_FACULTY";
+      
+      formData.append("accessType", finalAccessType);
+      
+      if (finalAccessType === "SELECT_FACULTY" && selectedFacultyNames.length > 0) {
+        const ids = selectedFacultyNames.map(name => facultyUsers.find(u => u.name === name)?.id).filter(Boolean);
+        formData.append("selectedFacultyIds", JSON.stringify(ids));
       }
 
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/documents`, {
@@ -101,8 +107,8 @@ export default function AdminUpload() {
         subtitle="Upload files (PDF, JPG, PNG, DOCX, PPTX) to be processed and organized."
       />
 
-      <div className="flex flex-col lg:flex-row gap-6 items-stretch">
-        <div className="flex-1 bg-white border border-[var(--border)] rounded-2xl p-8 flex flex-col h-full">
+      <div className="flex flex-col lg:flex-row gap-6 items-start pb-8">
+        <div className="flex-1 w-full bg-white border border-[var(--border)] rounded-2xl p-8 flex flex-col min-h-[500px] lg:sticky lg:top-6">
           <input 
             type="file" 
             ref={fileInputRef} 
@@ -211,15 +217,30 @@ export default function AdminUpload() {
                 Document Access <Info className="w-3.5 h-3.5 text-gray-400" />
               </label>
               <CustomDropdown 
-                value={accessList}
-                onChange={(val) => setAccessList(val as string[])}
-                options={facultyUsers}
+                value={accessType}
+                onChange={(val) => setAccessType(val as string)}
+                options={["None of the Faculty", "All Faculty", "Select Faculty"]}
                 fullWidth
-                multiSelect
                 icon={<Users className="w-4 h-4 text-gray-400" />}
               />
               <p className="text-xs text-gray-500 mt-1.5">Select the faculty members who can access this document.</p>
             </div>
+
+            {accessType === "Select Faculty" && (
+              <div className="space-y-1.5 pb-2">
+                <label className="text-sm font-semibold text-foreground">
+                  Select Faculty
+                </label>
+                <CustomDropdown 
+                  value={selectedFacultyNames}
+                  onChange={(val) => setSelectedFacultyNames(val as string[])}
+                  options={facultyNames}
+                  fullWidth
+                  multiSelect
+                  icon={<Users className="w-4 h-4 text-gray-400" />}
+                />
+              </div>
+            )}
 
             <button 
               type="submit"

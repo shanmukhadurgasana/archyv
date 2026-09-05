@@ -1,15 +1,10 @@
 import { Response } from "express";
-import { PrismaClient, DocumentType } from "@prisma/client";
-import { Pool } from "pg";
-import { PrismaPg } from "@prisma/adapter-pg";
+import { DocumentType, DocumentAccess } from "@prisma/client";
 import { env } from "../config/env";
 import { AuthRequest } from "../middleware/auth";
 import { uploadFile, deleteFile } from "../services/cloudinary.service";
 import { createAuditLog } from "../services/audit.service";
-
-const pool = new Pool({ connectionString: env.DATABASE_URL });
-const adapter = new PrismaPg(pool);
-const prisma = new PrismaClient({ adapter });
+import { prisma } from "../lib/prisma";
 
 export const createDocument = async (req: AuthRequest, res: Response) => {
   try {
@@ -21,7 +16,7 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ success: false, message: "No file provided" });
     }
 
-    const { name, domain, department, academicYear } = req.body;
+    const { name, domain, department, academicYear, accessType, selectedFacultyIds } = req.body;
 
     if (!name || !domain) {
       return res.status(400).json({ success: false, message: "Name and domain are required" });
@@ -59,6 +54,30 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
     // 1. Upload to Cloudinary
     const uploadResult = await uploadFile(req.file.buffer, req.file.originalname);
     
+    let parsedAccessType: DocumentAccess = "NONE";
+    if (accessType === "ALL_FACULTY") parsedAccessType = "ALL_FACULTY";
+    else if (accessType === "SELECT_FACULTY") parsedAccessType = "SELECT_FACULTY";
+
+    let facultyAccessData: { facultyId: string }[] = [];
+    if (parsedAccessType === "SELECT_FACULTY" && selectedFacultyIds) {
+      try {
+        const ids: string[] = JSON.parse(selectedFacultyIds);
+        if (Array.isArray(ids) && ids.length > 0) {
+          const validFaculties = await prisma.user.findMany({
+            where: { id: { in: ids }, adminId: req.user.id }
+          });
+          if (validFaculties.length !== ids.length) {
+            return res.status(403).json({ success: false, message: "Unauthorized faculty selection" });
+          }
+          facultyAccessData = ids.map(id => ({ facultyId: id }));
+        } else {
+          return res.status(400).json({ success: false, message: "No faculty selected" });
+        }
+      } catch (e) {
+        return res.status(400).json({ success: false, message: "Invalid selectedFacultyIds format" });
+      }
+    }
+
     // 2. Create Prisma Document
     try {
       const document = await prisma.document.create({
@@ -72,6 +91,10 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
           domainId: domainRecord.id,
           departmentId,
           academicYearId,
+          accessType: parsedAccessType,
+          facultyAccess: facultyAccessData.length > 0 ? {
+            create: facultyAccessData
+          } : undefined
         },
         include: {
           domain: { select: { name: true } },
@@ -161,22 +184,40 @@ export const getDocuments = async (req: AuthRequest, res: Response) => {
       where.domain = { name: domain as string };
     }
     
-    const uploadedByCondition: any = {};
-    if (faculty && faculty !== "All Faculty") {
-      uploadedByCondition.name = faculty as string;
-    }
-
     if ((userRole as string) === 'ADMIN' || (userRole as string) === 'admin') {
+      const uploadedByCondition: any = {};
+      if (faculty && faculty !== "All Faculty") {
+        uploadedByCondition.name = faculty as string;
+      }
       uploadedByCondition.OR = [
         { id: userId },
         { adminId: userId }
       ];
-    } else {
-      where.uploadedById = userId;
-    }
-
-    if (Object.keys(uploadedByCondition).length > 0) {
       where.uploadedBy = uploadedByCondition;
+    } else {
+      // Faculty logic
+      const facultyAuthConditions: any[] = [
+        { uploadedById: userId }
+      ];
+
+      const userAdminId = (req.user as any)?.adminId;
+      if (userAdminId) {
+        facultyAuthConditions.push({
+          uploadedById: userAdminId,
+          OR: [
+            { accessType: 'ALL_FACULTY' },
+            { facultyAccess: { some: { facultyId: userId } } }
+          ]
+        });
+      }
+
+      where.AND = [
+        { OR: facultyAuthConditions }
+      ];
+
+      if (faculty && faculty !== "All Faculty") {
+        where.AND.push({ uploadedBy: { name: faculty as string } });
+      }
     }
     
     // Pagination
@@ -207,6 +248,7 @@ export const getDocuments = async (req: AuthRequest, res: Response) => {
           department: { select: { name: true } },
           academicYear: { select: { year: true } },
           uploadedBy: { select: { name: true } },
+          uploadedById: true,
           starredByUsers: { select: { userId: true }, where: { userId } }
         },
         orderBy
@@ -226,6 +268,7 @@ export const getDocuments = async (req: AuthRequest, res: Response) => {
       department: doc.department?.name,
       year: doc.academicYear?.year,
       uploadedBy: doc.uploadedBy.name,
+      uploadedById: doc.uploadedById,
       isStarred: doc.starredByUsers.length > 0,
       filename: doc.name,
       cloudinaryUrl: doc.cloudinaryUrl
@@ -254,7 +297,8 @@ export const getDocumentById = async (req: AuthRequest, res: Response) => {
       include: {
         domain: true,
         department: true,
-        uploadedBy: { select: { id: true, name: true, adminId: true } }
+        uploadedBy: { select: { id: true, name: true, adminId: true } },
+        facultyAccess: { where: { facultyId: req.user?.id } }
       }
     });
 
@@ -263,7 +307,14 @@ export const getDocumentById = async (req: AuthRequest, res: Response) => {
     }
 
     if (req.user?.role?.toUpperCase() !== 'ADMIN') {
-      if (document.uploadedById !== req.user?.id) {
+      const isOwner = document.uploadedById === req.user?.id;
+      const isAdminOwner = document.uploadedById === (req.user as any)?.adminId;
+      const hasAdminAccess = isAdminOwner && (
+        document.accessType === 'ALL_FACULTY' || 
+        (document.accessType === 'SELECT_FACULTY' && document.facultyAccess.length > 0)
+      );
+
+      if (!isOwner && !hasAdminAccess) {
         return res.status(403).json({ success: false, message: "Forbidden" });
       }
     } else {
@@ -292,14 +343,25 @@ export const toggleStar = async (req: AuthRequest, res: Response) => {
     // Check if doc exists
     const doc = await prisma.document.findUnique({ 
       where: { id: documentId }, 
-      include: { domain: true, uploadedBy: { select: { id: true, adminId: true } } } 
+      include: { 
+        domain: true, 
+        uploadedBy: { select: { id: true, adminId: true } },
+        facultyAccess: { where: { facultyId: userId } }
+      } 
     });
     if (!doc || doc.isDeleted) {
       return res.status(404).json({ success: false, message: "Document not found" });
     }
 
     if (req.user.role?.toUpperCase() !== 'ADMIN') {
-      if (doc.uploadedById !== userId) {
+      const isOwner = doc.uploadedById === userId;
+      const isAdminOwner = doc.uploadedById === (req.user as any)?.adminId;
+      const hasAdminAccess = isAdminOwner && (
+        doc.accessType === 'ALL_FACULTY' || 
+        (doc.accessType === 'SELECT_FACULTY' && doc.facultyAccess.length > 0)
+      );
+
+      if (!isOwner && !hasAdminAccess) {
         return res.status(403).json({ success: false, message: "Forbidden" });
       }
     } else {
@@ -347,7 +409,10 @@ export const viewDocument = async (req: AuthRequest, res: Response) => {
     const documentId = req.params.id;
     const document = await prisma.document.findUnique({ 
       where: { id: documentId },
-      include: { uploadedBy: { select: { id: true, adminId: true } } }
+      include: { 
+        uploadedBy: { select: { id: true, adminId: true } },
+        facultyAccess: { where: { facultyId: req.user?.id } }
+      }
     });
     
     if (!document || document.isDeleted) {
@@ -355,7 +420,14 @@ export const viewDocument = async (req: AuthRequest, res: Response) => {
     }
 
     if (req.user?.role?.toUpperCase() !== 'ADMIN') {
-      if (document.uploadedById !== req.user?.id) {
+      const isOwner = document.uploadedById === req.user?.id;
+      const isAdminOwner = document.uploadedById === (req.user as any)?.adminId;
+      const hasAdminAccess = isAdminOwner && (
+        document.accessType === 'ALL_FACULTY' || 
+        (document.accessType === 'SELECT_FACULTY' && document.facultyAccess.length > 0)
+      );
+
+      if (!isOwner && !hasAdminAccess) {
         return res.status(403).json({ success: false, message: "Forbidden" });
       }
     } else {

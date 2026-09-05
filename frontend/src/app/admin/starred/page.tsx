@@ -13,7 +13,7 @@ import { useAppContext } from "@/store/AppContext";
 
 export default function AdminStarred() {
   const { documents, starredDocs, currentUser } = useAppContext();
-  
+
   // Local filtering for starred docs to prevent overriding the global documents cache
   const userStarredIds = currentUser ? starredDocs[currentUser.id] || [] : [];
   const starredFiles = documents.filter(f => !f.isDeleted && (f.isStarred || userStarredIds.includes(f.id)));
@@ -27,20 +27,20 @@ export default function AdminStarred() {
 
   return (
     <div>
-      <PageHeader 
-        title="Starred Files" 
+      <PageHeader
+        title="Starred Files"
         subtitle="Files that you have starred for quick access."
       >
         <div className="flex items-center gap-3">
           <SortDropdown value={sortBy} onChange={setSortBy} />
           <div className="flex bg-white border border-[var(--border)] rounded-lg overflow-hidden shadow-sm">
-            <button 
+            <button
               onClick={() => setViewMode("grid")}
               className={clsx("p-2 transition-colors", viewMode === "grid" ? "bg-gray-50 text-foreground" : "text-gray-400 hover:text-foreground hover:bg-gray-50")}
             >
               <LayoutGrid className="w-4 h-4" />
             </button>
-            <button 
+            <button
               onClick={() => setViewMode("list")}
               className={clsx("p-2 transition-colors", viewMode === "list" ? "bg-gray-50 text-foreground" : "text-gray-400 hover:text-foreground hover:bg-gray-50")}
             >
@@ -76,8 +76,8 @@ export default function AdminStarred() {
               </div>
             </div>
           )}
-          
-          <Pagination 
+
+          <Pagination
             currentPage={currentPage}
             totalPages={totalPages}
             onPageChange={handlePageChange}

@@ -32,7 +32,7 @@ export default function AdminAuditLogs() {
       case "Restored file": return <ArrowUpCircle className="w-4 h-4 text-blue-500" />;
       case "Permanently deleted file": return <Trash2 className="w-4 h-4 text-red-600" />;
       case "Accessed file": return <Eye className="w-4 h-4 text-gray-500" />;
-      case "Created folder": return <div className="w-4 h-4 relative"><Image src="/logo.png" alt="Folder" fill className="object-contain" /></div>;
+      case "Created folder": return <div className="w-4 h-4 relative"><Image src="/logo.png" alt="Folder" fill sizes="16px" className="object-contain" /></div>;
       default: return <ArrowUpCircle className="w-4 h-4 text-gray-500" />;
     }
   };
@@ -101,7 +101,7 @@ export default function AdminAuditLogs() {
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 relative shrink-0"><Image src="/logo.png" alt="File" fill className="object-contain" /></div>
+                      <div className="w-4 h-4 relative shrink-0"><Image src="/logo.png" alt="File" fill sizes="16px" className="object-contain" /></div>
                       <div>
                         <div className="font-medium text-foreground truncate max-w-[150px]">{log.target}</div>
                         <div className="text-[10px] text-gray-400 truncate max-w-[150px]">/Files/{log.domain}/2026</div>

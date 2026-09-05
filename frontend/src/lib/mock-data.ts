@@ -12,7 +12,9 @@ export interface User {
   status?: string;
   lastLogin?: string;
   password?: string;
+  facultyId?: string;
   adminId?: string;
+  isTwoFactorEnabled?: boolean;
 }
 
 export interface DomainStats {
@@ -31,6 +33,7 @@ export interface Document {
   domain: string;
   department?: string;
   uploadedBy?: string;
+  uploadedById?: string;
   isStarred: boolean;
   isDeleted?: boolean;
   deletedDate?: string;

@@ -18,7 +18,8 @@ import {
   Shield,
   User, 
   Settings, 
-  LogOut
+  LogOut,
+  CloudUpload
 } from "lucide-react";
 import clsx from "clsx";
 import Image from "next/image";
@@ -96,6 +97,7 @@ export default function Sidebar({ role }: SidebarProps) {
 
   const facultyDocs = [
     { label: "Documents", href: "/faculty/documents", icon: FileText },
+    { label: "Admin Uploads", href: "/faculty/admin-uploads", icon: CloudUpload },
     { label: "Upload", href: "/faculty/upload", icon: Upload },
   ];
 
@@ -151,7 +153,7 @@ export default function Sidebar({ role }: SidebarProps) {
     <div className="w-64 border-r border-[var(--border)] h-screen flex flex-col bg-background shrink-0 sticky top-0 overflow-y-auto">
       <div className="p-6 flex flex-col gap-0.5">
         <div className="flex items-center gap-2">
-          <Image src="/logo.png" alt="ARCHYV Logo" width={32} height={32} className="object-contain" />
+          <img src="/logo.png" alt="ARCHYV Logo" className="h-8 w-auto object-contain" />
           <span className="font-bold text-xl tracking-widest uppercase">ARCHYV</span>
         </div>
         <div className="ml-10 text-[10px] font-bold tracking-[0.2em] text-[var(--archyv-accent)]/80 uppercase">

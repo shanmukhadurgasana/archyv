@@ -4,6 +4,7 @@ import { useState } from "react";
 import PageHeader from "@/components/ui/PageHeader";
 import { Lock, Eye, EyeOff, Check, AlertCircle } from "lucide-react";
 import { useAppContext } from "@/store/AppContext";
+import PasskeyManager from "@/components/auth/PasskeyManager";
 
 export default function AdminSettings() {
   const { currentUser, updateUserProfile } = useAppContext();
@@ -252,6 +253,9 @@ export default function AdminSettings() {
           </div>
         </div>
       </div>
+      
+      {/* Passkey Management Section */}
+      <PasskeyManager />
     </div>
   );
 }

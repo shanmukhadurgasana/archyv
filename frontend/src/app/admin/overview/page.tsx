@@ -9,9 +9,9 @@ import { useAppContext } from "@/store/AppContext";
 
 export default function AdminOverview() {
   const { dashboardStats } = useAppContext();
-  
+
   // Calculate true storage usage from active files
-    const totalBytes = dashboardStats?.totalBytes || 0;
+  const totalBytes = dashboardStats?.totalBytes || 0;
   const totalMB = (totalBytes / (1024 * 1024)).toFixed(2);
   const totalStr = parseFloat(totalMB) > 1024 ? `${(parseFloat(totalMB) / 1024).toFixed(2)} GB` : `${totalMB} MB`;
   const percentage = Math.min((totalBytes / (100 * 1024 * 1024 * 1024)) * 100, 100).toFixed(1);
@@ -35,9 +35,9 @@ export default function AdminOverview() {
 
   return (
     <div>
-      <PageHeader 
-        title="Good morning, Admin 👋" 
-        subtitle="Here's what's happening with ARCHYV today." 
+      <PageHeader
+        title="Good morning, Admin 👋"
+        subtitle="Here's what's happening with ARCHYV today."
       />
 
       <div className="mb-8 bg-white border border-[var(--border)] rounded-2xl p-6">

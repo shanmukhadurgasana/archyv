@@ -5,6 +5,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import { Lock, Eye, EyeOff, Check, AlertCircle } from "lucide-react";
 import clsx from "clsx";
 import { useAppContext } from "@/store/AppContext";
+import PasskeyManager from "@/components/auth/PasskeyManager";
 
 export default function FacultySettings() {
   const { currentUser, updateUserProfile } = useAppContext();
@@ -235,6 +236,9 @@ export default function FacultySettings() {
           </div>
         </div>
       </div>
+
+      {/* Passkey Management Section */}
+      <PasskeyManager />
     </div>
   );
 }

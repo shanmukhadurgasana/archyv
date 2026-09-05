@@ -29,10 +29,14 @@ model User {
   Document_Document_rejectedByIdToUser Document[]        @relation("Document_rejectedByIdToUser")
   uploadedDocs                         Document[]        @relation("UploadedBy")
   starredDocs                          StarredDocument[]
+  documentAccess                       DocumentFacultyAccess[]
   createdByAdmin                       User?             @relation("CreatedBy", fields: [adminId], references: [id])
   createdUsers                         User[]            @relation("CreatedBy")
   department                           Department?       @relation(fields: [departmentId], references: [id])
   sessions                             Session[]
+  passwordResetTokens                  PasswordResetToken[]
+  passkeys                             Passkey[]
+  currentChallenge                     String?
 
   @@index([adminId])
   @@index([departmentId])
@@ -92,6 +96,8 @@ model Document {
   User_Document_rejectedByIdToUser User?             @relation("Document_rejectedByIdToUser", fields: [rejectedById], references: [id])
   uploadedBy                       User              @relation("UploadedBy", fields: [uploadedById], references: [id])
   starredByUsers                   StarredDocument[]
+  accessType                       DocumentAccess    @default(NONE)
+  facultyAccess                    DocumentFacultyAccess[]
 
   @@index([uploadedById])
   @@index([departmentId])
@@ -160,4 +166,64 @@ model Session {
 
   @@index([userId])
   @@index([isValid])
+}
+
+model DocumentFacultyAccess {
+  id         String   @id @default(uuid())
+  documentId String
+  facultyId  String
+  createdAt  DateTime @default(now())
+
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  faculty    User     @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, facultyId])
+  @@index([documentId])
+  @@index([facultyId])
+}
+
+enum DocumentAccess {
+  NONE
+  ALL_FACULTY
+  SELECT_FACULTY
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+}
+
+model Passkey {
+  id                  String   @id @default(uuid())
+  userId              String
+  credentialID        Bytes    @unique
+  credentialPublicKey Bytes
+  counter             BigInt
+  transports          String?
+  deviceType          String?
+  backedUp            Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model AuthChallenge {
+  id        String   @id @default(uuid())
+  challenge String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([challenge])
 }

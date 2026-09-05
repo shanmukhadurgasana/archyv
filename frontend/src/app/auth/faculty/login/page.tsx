@@ -14,7 +14,8 @@ export default function FacultyLogin() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const router = useRouter();
-  const { login } = useAppContext();
+  const { login, loginPasskey } = useAppContext();
+  const [isPasskeyLoading, setIsPasskeyLoading] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,6 +24,23 @@ export default function FacultyLogin() {
       router.push("/faculty/overview");
     } else {
       setError("Invalid faculty credentials");
+    }
+  };
+
+  const handlePasskeyLogin = async () => {
+    setError("");
+    setIsPasskeyLoading(true);
+    const result = await loginPasskey();
+    setIsPasskeyLoading(false);
+    
+    if (result.success) {
+      if (result.role?.toLowerCase() === "faculty") {
+        router.push("/faculty/overview");
+      } else {
+        setError("Unauthorized: Not a Faculty member");
+      }
+    } else if (result.error) {
+      setError(result.error);
     }
   };
 
@@ -82,7 +100,7 @@ export default function FacultyLogin() {
               <input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-[var(--archyv-accent)] focus:ring-[var(--archyv-accent)]" />
               <span className="text-gray-500">Remember me</span>
             </label>
-            <Link href="#" className="text-[var(--archyv-accent-hover)] font-medium hover:underline">
+            <Link href="/auth/forgot-password" className="text-[var(--archyv-accent-hover)] font-medium hover:underline">
               Forgot password?
             </Link>
           </div>
@@ -103,10 +121,12 @@ export default function FacultyLogin() {
 
             <button 
               type="button"
-              className="w-full bg-white border border-gray-200 hover:bg-gray-50 text-foreground font-medium py-2.5 rounded-xl transition-colors flex items-center justify-center gap-3 shadow-sm"
+              onClick={handlePasskeyLogin}
+              disabled={isPasskeyLoading}
+              className="w-full bg-white border border-gray-200 hover:bg-gray-50 text-foreground font-medium py-2.5 rounded-xl transition-colors flex items-center justify-center gap-3 shadow-sm disabled:opacity-50"
             >
               <Key className="w-5 h-5 text-gray-700" />
-              Continue with Passkeys
+              {isPasskeyLoading ? "Authenticating..." : "Continue with Passkeys"}
             </button>
           </div>
         </form>

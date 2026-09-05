@@ -11,6 +11,7 @@ export interface AuthRequest extends Request {
     role: Role;
     facultyId?: string | null;
     departmentId?: string | null;
+    adminId?: string | null;
   };
 }
 
@@ -48,6 +49,7 @@ export const requireAuth = async (req: AuthRequest, res: Response, next: NextFun
       role: decoded.role,
       facultyId: decoded.facultyId,
       departmentId: decoded.departmentId,
+      adminId: decoded.adminId,
     };
     
     next();

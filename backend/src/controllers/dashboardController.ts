@@ -21,19 +21,31 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
         ]
       };
     } else {
-      baseWhere.uploadedById = userId;
+      const userAdminId = (req.user as any)?.adminId;
+      if (userAdminId) {
+        baseWhere.OR = [
+          { uploadedById: userId },
+          {
+            uploadedById: userAdminId,
+            OR: [
+              { accessType: 'ALL_FACULTY' },
+              { facultyAccess: { some: { facultyId: userId } } }
+            ]
+          }
+        ];
+      } else {
+        baseWhere.uploadedById = userId;
+      }
     }
 
-    // Fetch everything concurrently to minimize latency
+    // Fetch documents and domains concurrently
     const domainsPromise = prisma.domain.findMany();
-    const storagePromise = prisma.document.aggregate({
-      _sum: { sizeBytes: true },
-      where: { ...baseWhere }
-    });
-    const statusCountsPromise = prisma.document.groupBy({
-      by: ['isDeleted'],
+    
+    // Instead of Prisma groupBy which doesn't support relation filters,
+    // we fetch the required scalar fields and aggregate in memory.
+    const allowedDocsPromise = prisma.document.findMany({
       where: baseWhere,
-      _count: { _all: true }
+      select: { sizeBytes: true, isDeleted: true, domainId: true }
     });
     
     let facultyWhere: any = { role: 'FACULTY' };
@@ -62,38 +74,34 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
       }
     });
 
-    const domainCountsPromise = prisma.document.groupBy({
-      by: ['domainId'],
-      where: { ...baseWhere, isDeleted: false },
-      _count: { _all: true }
-    });
-
     // Await all parallel promises
-    const [domains, storageResult, statusCounts, totalFaculty, rawAuditLogs, domainCounts] = await Promise.all([
+    const [domains, allowedDocs, totalFaculty, rawAuditLogs] = await Promise.all([
       domainsPromise,
-      storagePromise,
-      statusCountsPromise,
+      allowedDocsPromise,
       totalFacultyPromise,
-      rawAuditLogsPromise,
-      domainCountsPromise
+      rawAuditLogsPromise
     ]);
 
-    const totalBytes = Number(storageResult._sum.sizeBytes || 0);
+    let totalBytes = 0;
+    let totalDocuments = 0;
+    let trashDocuments = 0;
+    const domainCountsMap = new Map<string, number>();
 
-    let totalDocuments = 0, trashDocuments = 0;
-    statusCounts.forEach(group => {
-      const count = group._count._all;
-      if (group.isDeleted) {
-        trashDocuments += count;
+    allowedDocs.forEach(doc => {
+      totalBytes += Number(doc.sizeBytes || 0);
+      if (doc.isDeleted) {
+        trashDocuments++;
       } else {
-        totalDocuments += count;
+        totalDocuments++;
+        if (doc.domainId) {
+          domainCountsMap.set(doc.domainId, (domainCountsMap.get(doc.domainId) || 0) + 1);
+        }
       }
     });
 
-    // Construct Domain Stats using grouped results efficiently without N+1 queries
+    // Construct Domain Stats
     const domainStats = domains.map((domain) => {
-      const found = domainCounts.find(dc => dc.domainId === domain.id);
-      return { id: domain.id, name: domain.name, count: found ? found._count._all : 0 };
+      return { id: domain.id, name: domain.name, count: domainCountsMap.get(domain.id) || 0 };
     });
 
     const recentActivity = rawAuditLogs.map(log => ({

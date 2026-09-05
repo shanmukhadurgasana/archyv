@@ -131,6 +131,7 @@ export const login = async (req: Request, res: Response) => {
         role: user.role,
         facultyId: user.facultyId,
         departmentId: user.departmentId,
+        adminId: user.adminId,
         sessionId: session.id,
       },
       env.JWT_SECRET,
@@ -373,6 +374,101 @@ export const updatePassword = async (req: AuthRequest, res: Response) => {
   }
 };
 
+import crypto from "crypto";
+import { sendPasswordResetEmail } from "../services/email.service";
+
+export const forgotPassword = async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    
+    // Always return generic success message to prevent user enumeration
+    if (!user || user.status !== "Active") {
+      return res.status(200).json({ message: "If an account exists with this email, a password reset link has been sent." });
+    }
+
+    // Generate secure token
+    const resetToken = crypto.randomBytes(32).toString("hex");
+    const tokenHash = crypto.createHash("sha256").update(resetToken).digest("hex");
+
+    // Token expires in 15 minutes
+    const expiresAt = new Date();
+    expiresAt.setMinutes(expiresAt.getMinutes() + 15);
+
+    await prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        tokenHash,
+        expiresAt,
+      },
+    });
+
+    const resetLink = `${env.FRONTEND_URL || 'http://localhost:3000'}/auth/reset-password?token=${resetToken}`;
+    
+    // Send email asynchronously
+    sendPasswordResetEmail(user.email, resetLink).catch(console.error);
+    
+    createAuditLog(user.id, "PASSWORD_RESET_REQUESTED", user.email, "Auth").catch(console.error);
+
+    res.status(200).json({ message: "If an account exists with this email, a password reset link has been sent." });
+  } catch (error) {
+    console.error("Forgot password error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+export const resetPassword = async (req: Request, res: Response) => {
+  try {
+    const { token, newPassword } = req.body;
+    if (!token || !newPassword) {
+      return res.status(400).json({ message: "Token and new password are required" });
+    }
+
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+
+    const resetTokenRecord = await prisma.passwordResetToken.findFirst({
+      where: {
+        tokenHash,
+        usedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      include: { user: true },
+    });
+
+    if (!resetTokenRecord) {
+      return res.status(400).json({ message: "Invalid or expired token" });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12); // Using 12 rounds as in signup
+
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: resetTokenRecord.userId },
+        data: { passwordHash },
+      }),
+      prisma.passwordResetToken.update({
+        where: { id: resetTokenRecord.id },
+        data: { usedAt: new Date() },
+      }),
+      prisma.session.updateMany({
+        where: { userId: resetTokenRecord.userId },
+        data: { isValid: false },
+      })
+    ]);
+
+    createAuditLog(resetTokenRecord.userId, "PASSWORD_RESET_COMPLETED", resetTokenRecord.user.email, "Auth").catch(console.error);
+
+    res.status(200).json({ message: "Password has been successfully reset" });
+  } catch (error) {
+    console.error("Reset password error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
 // 2FA Endpoints
 
 export const generate2FA = async (req: AuthRequest, res: Response) => {
@@ -493,6 +589,7 @@ export const login2FA = async (req: Request, res: Response) => {
         role: user.role,
         facultyId: user.facultyId,
         departmentId: user.departmentId,
+        adminId: user.adminId,
         sessionId: session.id,
       },
       env.JWT_SECRET,

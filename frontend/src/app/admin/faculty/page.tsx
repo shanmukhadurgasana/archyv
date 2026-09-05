@@ -382,7 +382,9 @@ export default function AdminFaculty() {
                       if (res.ok) {
                         const data = await res.json();
                         setEditFacultyData({ ...editFacultyData, avatar: data.user.avatar });
-                        updateFaculty(editFacultyData.id, { avatar: data.user.avatar }); // Update locally in context
+                        if (editFacultyData.id) {
+                          updateFaculty(editFacultyData.id, { avatar: data.user.avatar }); // Update locally in context
+                        }
                       } else {
                         alert("Failed to upload avatar");
                       }
