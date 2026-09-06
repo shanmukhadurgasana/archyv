@@ -16,7 +16,8 @@ export default function AdminUpload() {
   const [accessType, setAccessType] = useState<string>("None of the Faculty");
   const [selectedFacultyNames, setSelectedFacultyNames] = useState<string[]>([]);
   
-  const facultyUsers = useAppContext().users.filter(u => u.role === "faculty");
+  const { users, addDocument } = useAppContext();
+  const facultyUsers = users.filter(u => u.role === "faculty");
   const facultyNames = facultyUsers.map(u => u.name);
   
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -89,6 +90,9 @@ export default function AdminUpload() {
       if (!response.ok) {
         throw new Error("Failed to upload document");
       }
+
+      const data = await response.json();
+      addDocument(data.document);
 
       setShowSuccess(true);
       setTimeout(() => {

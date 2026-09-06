@@ -11,7 +11,7 @@ import { useDataView, SortOption } from "@/hooks/useDataView";
 import { useAppContext } from "@/store/AppContext";
 
 export default function AdminFiles() {
-  const { documents } = useAppContext();
+  const { documents, isDataLoading } = useAppContext();
   const allFiles = documents.filter(f => !f.isDeleted);
 
   const {
@@ -57,7 +57,14 @@ export default function AdminFiles() {
       </div>
 
       <div className="space-y-6">
-        {viewMode === "grid" ? (
+        {isDataLoading ? (
+          <div className="bg-white border border-[var(--border)] rounded-2xl p-12 flex flex-col items-center justify-center text-center min-h-[400px]">
+            <div className="w-8 h-8 border-4 border-gray-200 border-t-[var(--archyv-accent)] rounded-full animate-spin mb-4"></div>
+            <h3 className="text-lg font-bold text-foreground mb-2">Loading files...</h3>
+          </div>
+        ) : (
+          <>
+            {viewMode === "grid" ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mb-6">
             {paginatedData.map((file, i) => (
               <FileCard key={`${file.id}-${i}`} file={file} />
@@ -90,6 +97,8 @@ export default function AdminFiles() {
           itemsPerPage={10}
           label="files"
         />
+          </>
+        )}
       </div>
     </div>
   );

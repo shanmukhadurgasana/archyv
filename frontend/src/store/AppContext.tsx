@@ -142,17 +142,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const initializeData = async (user: User) => {
     setIsDataLoading(true);
     const isAdmin = user.role.toLowerCase() === 'admin';
-    const promises = [
+    
+    // Load critical data to stop loading state
+    await Promise.allSettled([
       fetchDocuments(),
       fetchTrashDocuments(),
-      fetchDashboardStats(),
-    ];
-    if (isAdmin) {
-      promises.push(fetchUsers());
-      promises.push(fetchAuditLogs());
-    }
-    await Promise.allSettled(promises);
+    ]);
     setIsDataLoading(false);
+
+    // Load secondary data concurrently without blocking
+    fetchDashboardStats();
+    if (isAdmin) {
+      fetchUsers();
+      fetchAuditLogs();
+    }
   };
 
   const addDocument = (doc: Document) => {
@@ -323,38 +326,48 @@ export function AppProvider({ children }: { children: ReactNode }) {
     
     // Grab the document before it's deleted to move it to trash optimistically
     const docToDelete = documents.find(d => d.id === id);
+    if (!docToDelete) return;
     
+    // Optimistic Update
+    setDocuments(prev => prev.filter(d => d.id !== id));
+    
+    const trashedDoc = {
+      ...docToDelete,
+      isDeleted: true,
+      deletedDate: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+      daysLeft: 90
+    };
+    setTrashDocuments(prev => [trashedDoc, ...prev]);
+    
+    if (dashboardStats) {
+        setDashboardStats((prev: any) => ({
+            ...prev,
+            trashDocuments: prev.trashDocuments + 1,
+            totalDocuments: Math.max(0, prev.totalDocuments - 1),
+        }));
+    }
+
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/documents/${id}`, {
         method: 'DELETE',
         credentials: 'include'
       });
-      if (res.ok) {
-        setDocuments(prev => prev.filter(d => d.id !== id));
-        
-        if (docToDelete) {
-          const trashedDoc = {
-            ...docToDelete,
-            isDeleted: true,
-            deletedDate: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-            daysLeft: 90
-          };
-          setTrashDocuments(prev => [trashedDoc, ...prev]);
-        }
-        
-        if (dashboardStats) {
-            setDashboardStats((prev: any) => ({
-                ...prev,
-                trashDocuments: prev.trashDocuments + 1,
-                totalDocuments: Math.max(0, prev.totalDocuments - 1),
-            }));
-        }
-      } else {
-        alert("Failed to delete document");
+      if (!res.ok) {
+        throw new Error("Failed to delete document");
       }
     } catch (e) {
       console.error(e);
-      alert("Error deleting document");
+      // Revert Optimistic Update
+      setDocuments(prev => [docToDelete, ...prev]);
+      setTrashDocuments(prev => prev.filter(d => d.id !== id));
+      if (dashboardStats) {
+          setDashboardStats((prev: any) => ({
+              ...prev,
+              trashDocuments: Math.max(0, prev.trashDocuments - 1),
+              totalDocuments: prev.totalDocuments + 1,
+          }));
+      }
+      alert("Error deleting document. Reverted changes.");
     }
   };
 
@@ -362,53 +375,70 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (currentUser?.role.toLowerCase() !== "admin") return;
     
     const docToRestore = trashDocuments.find(d => d.id === id);
+    if (!docToRestore) return;
+
+    // Optimistic Update
+    setTrashDocuments(prev => prev.filter(d => d.id !== id));
     
+    const restoredDoc = { ...docToRestore, isDeleted: false };
+    delete restoredDoc.deletedDate;
+    delete restoredDoc.daysLeft;
+    setDocuments(prev => [restoredDoc, ...prev]);
+    
+    if (dashboardStats) {
+        setDashboardStats((prev: any) => ({
+            ...prev,
+            trashDocuments: Math.max(0, prev.trashDocuments - 1),
+            totalDocuments: prev.totalDocuments + 1,
+        }));
+    }
+
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/documents/${id}/restore`, {
         method: 'PATCH',
         credentials: 'include'
       });
-      if (res.ok) {
-        setTrashDocuments(prev => prev.filter(d => d.id !== id));
-        
-        if (docToRestore) {
-          const restoredDoc = { ...docToRestore, isDeleted: false };
-          delete restoredDoc.deletedDate;
-          delete restoredDoc.daysLeft;
-          setDocuments(prev => [restoredDoc, ...prev]);
-        }
-        
-        if (dashboardStats) {
-            setDashboardStats((prev: any) => ({
-                ...prev,
-                trashDocuments: Math.max(0, prev.trashDocuments - 1),
-                totalDocuments: prev.totalDocuments + 1,
-            }));
-        }
-      } else {
-        alert("Failed to restore document");
+      if (!res.ok) {
+        throw new Error("Failed to restore document");
       }
     } catch (e) {
       console.error(e);
-      alert("Error restoring document");
+      // Revert Optimistic Update
+      setTrashDocuments(prev => [docToRestore, ...prev]);
+      setDocuments(prev => prev.filter(d => d.id !== id));
+      if (dashboardStats) {
+          setDashboardStats((prev: any) => ({
+              ...prev,
+              trashDocuments: prev.trashDocuments + 1,
+              totalDocuments: Math.max(0, prev.totalDocuments - 1),
+          }));
+      }
+      alert("Error restoring document. Reverted changes.");
     }
   };
 
   const permanentDeleteDocument = async (id: string) => {
     if (currentUser?.role.toLowerCase() !== "admin") return;
+    
+    const docToPermanentlyDelete = trashDocuments.find(d => d.id === id);
+    if (!docToPermanentlyDelete) return;
+
+    // Optimistic Update
+    setTrashDocuments(prev => prev.filter(d => d.id !== id));
+
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/documents/${id}/permanent`, {
         method: 'DELETE',
         credentials: 'include'
       });
-      if (res.ok) {
-        setTrashDocuments(prev => prev.filter(d => d.id !== id));
-      } else {
-        alert("Failed to permanently delete document");
+      if (!res.ok) {
+        throw new Error("Failed to permanently delete document");
       }
     } catch (e) {
       console.error(e);
-      alert("Error permanently deleting document");
+      // Revert Optimistic Update
+      setTrashDocuments(prev => [docToPermanentlyDelete, ...prev]);
+      alert("Error permanently deleting document. Reverted changes.");
     }
   };
 

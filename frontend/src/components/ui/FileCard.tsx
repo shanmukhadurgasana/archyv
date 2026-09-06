@@ -52,7 +52,7 @@ export default function FileCard({ file, isTrash = false }: FileCardProps) {
         {isTrash ? (
           <div className="flex items-center gap-2">
             <button 
-              onClick={(e) => { e.stopPropagation(); restoreDocument(file.id); }} 
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); restoreDocument(file.id); }} 
               className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full bg-white shadow-sm border border-gray-200 text-gray-700 hover:text-[var(--archyv-accent)] hover:border-[var(--archyv-accent)]/30 transition-all"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
@@ -62,7 +62,7 @@ export default function FileCard({ file, isTrash = false }: FileCardProps) {
         ) : (
           <div className="flex items-center gap-2">
             <button 
-              onClick={(e) => { e.stopPropagation(); toggleStar(file.id); }}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleStar(file.id); }}
               className="text-gray-300 group-hover:text-gray-400"
             >
               <Star className={clsx("w-5 h-5 transition-colors", isStarred ? "fill-[var(--archyv-accent)] text-[var(--archyv-accent)]" : "hover:text-[var(--archyv-accent)]")} />
@@ -70,7 +70,7 @@ export default function FileCard({ file, isTrash = false }: FileCardProps) {
             
             {currentUser?.role?.toLowerCase() === 'admin' && (
               <button 
-                onClick={(e) => { e.stopPropagation(); setShowDeleteModal(true); }} 
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowDeleteModal(true); }} 
                 className="text-gray-300 group-hover:text-red-400 transition-colors"
               >
                 <Trash2 className="w-5 h-5" />

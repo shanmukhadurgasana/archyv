@@ -9,8 +9,8 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
   return (
     <div className="min-h-screen bg-[#FCF8F5] flex items-center justify-center p-4 relative overflow-hidden">
       {/* Logo at the top left */}
-      <div className="absolute top-6 left-6 md:top-10 md:left-12 flex items-center gap-4 z-20">
-        <div className="h-12 md:h-14 relative flex items-center">
+      <div className="absolute top-6 left-6 md:top-10 md:left-12 flex items-center gap-3 z-20">
+        <div className="h-9 md:h-11 relative flex items-center">
           <img src="/logo.png" alt="ARCHYV" className="h-full w-auto object-contain" />
         </div>
         <span className="font-bold text-2xl md:text-3xl tracking-widest uppercase text-foreground">ARCHYV</span>

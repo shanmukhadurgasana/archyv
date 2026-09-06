@@ -17,7 +17,7 @@ export default function FacultyDocuments() {
     Admissions: true,
   });
 
-  const { documents, globalSearchQuery } = useAppContext();
+  const { documents, globalSearchQuery, isDataLoading } = useAppContext();
   const allFiles = documents.filter(f => !f.isDeleted);
 
   const toggleDomain = (domain: string) => {
@@ -56,7 +56,14 @@ export default function FacultyDocuments() {
       </PageHeader>
 
       <div className="space-y-4">
-        {domains.map((domain) => {
+        {isDataLoading ? (
+          <div className="bg-white border border-[var(--border)] rounded-2xl p-12 flex flex-col items-center justify-center text-center min-h-[400px]">
+            <div className="w-8 h-8 border-4 border-gray-200 border-t-[var(--archyv-accent)] rounded-full animate-spin mb-4"></div>
+            <h3 className="text-lg font-bold text-foreground mb-2">Loading documents...</h3>
+          </div>
+        ) : (
+          <>
+          {domains.map((domain) => {
           // We use paginatedData to show only files that belong to this domain on the CURRENT page
           const domainFiles = paginatedData.filter(f => f.domain === domain);
           // And we also count the total files for this domain just for the header badge using filteredData
@@ -120,16 +127,17 @@ export default function FacultyDocuments() {
             </div>
           );
         })}
+        <Pagination 
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={handlePageChange}
+          totalItems={totalItems}
+          itemsPerPage={10}
+          label="documents"
+        />
+        </>
+        )}
       </div>
-
-      <Pagination 
-        currentPage={currentPage}
-        totalPages={totalPages}
-        onPageChange={handlePageChange}
-        totalItems={totalItems}
-        itemsPerPage={10}
-        label="documents"
-      />
     </div>
   );
 }

@@ -102,22 +102,22 @@ export default function FileRow({ file, showActions = true, isTrash = false }: F
         <div className={clsx("flex items-center justify-end gap-3", "col-span-12 sm:col-span-2")}>
           {isTrash ? (
             <>
-              <button onClick={(e) => { e.stopPropagation(); restoreDocument(file.id); }} className="flex items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors">
+              <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); restoreDocument(file.id); }} className="flex items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
                 Restore
               </button>
-              <button onClick={(e) => { e.stopPropagation(); permanentDeleteDocument(file.id); }} className="flex items-center gap-1.5 text-xs font-medium text-red-500 hover:text-red-700 transition-colors ml-2">
+              <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); permanentDeleteDocument(file.id); }} className="flex items-center gap-1.5 text-xs font-medium text-red-500 hover:text-red-700 transition-colors ml-2">
                 <Trash2 className="w-3.5 h-3.5" />
                 Delete Permanently
               </button>
             </>
           ) : showActions && (
             <>
-              <button onClick={(e) => { e.stopPropagation(); toggleStar(file.id); }} className="text-gray-300 hover:text-[var(--archyv-accent)] transition-colors">
+              <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleStar(file.id); }} className="text-gray-300 hover:text-[var(--archyv-accent)] transition-colors">
                 <Star className={clsx("w-4 h-4", isStarred && "fill-[var(--archyv-accent)] text-[var(--archyv-accent)]")} />
               </button>
               {currentUser?.role?.toLowerCase() === 'admin' && (
-                <button onClick={(e) => { e.stopPropagation(); setShowDeleteModal(true); }} className="text-gray-300 hover:text-red-500 transition-colors">
+                <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowDeleteModal(true); }} className="text-gray-300 hover:text-red-500 transition-colors">
                   <Trash2 className="w-4 h-4" />
                 </button>
               )}

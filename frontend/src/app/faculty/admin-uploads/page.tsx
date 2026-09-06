@@ -11,7 +11,7 @@ import clsx from "clsx";
 import { useAppContext } from "@/store/AppContext";
 
 export default function FacultyAdminUploads() {
-  const { documents, currentUser } = useAppContext();
+  const { documents, currentUser, isDataLoading } = useAppContext();
   
   // Filter for files uploaded by admin and not deleted
   const adminFiles = documents.filter(f => !f.isDeleted && f.uploadedById !== currentUser?.id);
@@ -47,7 +47,12 @@ export default function FacultyAdminUploads() {
         </div>
       </PageHeader>
 
-      {totalItems > 0 ? (
+      {isDataLoading ? (
+        <div className="bg-white border border-[var(--border)] rounded-2xl p-12 flex flex-col items-center justify-center text-center min-h-[400px]">
+          <div className="w-8 h-8 border-4 border-gray-200 border-t-[var(--archyv-accent)] rounded-full animate-spin mb-4"></div>
+          <h3 className="text-lg font-bold text-foreground mb-2">Loading uploads...</h3>
+        </div>
+      ) : totalItems > 0 ? (
         <>
           {viewMode === "grid" ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
