@@ -8,12 +8,14 @@ interface ConfirmationModalProps {
   isOpen: boolean;
   title: string;
   message: string;
-  onConfirm: () => void;
+  confirmText?: string;
+  onConfirm: () => Promise<void> | void;
   onCancel: () => void;
 }
 
-export default function ConfirmationModal({ isOpen, title, message, onConfirm, onCancel }: ConfirmationModalProps) {
+export default function ConfirmationModal({ isOpen, title, message, confirmText = "Confirm", onConfirm, onCancel }: ConfirmationModalProps) {
   const [mounted, setMounted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -44,12 +46,19 @@ export default function ConfirmationModal({ isOpen, title, message, onConfirm, o
             Cancel
           </button>
           <button 
-            onClick={() => {
-              onConfirm();
+            onClick={async () => {
+              if (isSubmitting) return;
+              setIsSubmitting(true);
+              try {
+                await onConfirm();
+              } finally {
+                setIsSubmitting(false);
+              }
             }}
-            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm"
+            disabled={isSubmitting}
+            className={`px-4 py-2 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm disabled:opacity-70 disabled:cursor-not-allowed ${confirmText === "Delete" || title.toLowerCase().includes("remove") || title.toLowerCase().includes("delete") || title.toLowerCase().includes("reject") ? 'bg-red-600 hover:bg-red-700' : 'bg-[var(--archyv-accent)] hover:bg-[var(--archyv-accent-hover)]'}`}
           >
-            Delete
+            {isSubmitting ? "Processing..." : confirmText === "Confirm" && (title.toLowerCase().includes("delete") || title.toLowerCase().includes("remove")) ? "Delete" : confirmText}
           </button>
         </div>
       </div>

@@ -13,6 +13,7 @@ export default function AdminLogin() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   
   // 2FA state
   const [is2FA, setIs2FA] = useState(false);
@@ -25,8 +26,11 @@ export default function AdminLogin() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
     setError("");
+    setIsLoading(true);
     const result = await login(email, password);
+    setIsLoading(false);
     if (result && typeof result === "object" && result.require2FA) {
       setTempToken(result.tempToken);
       setIs2FA(true);
@@ -39,8 +43,11 @@ export default function AdminLogin() {
 
   const handle2FASubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
     setError("");
+    setIsLoading(true);
     const success = await login2FA(tempToken, twoFactorToken);
+    setIsLoading(false);
     if (success) {
       router.push("/admin/overview");
     } else {
@@ -101,9 +108,10 @@ export default function AdminLogin() {
             <div className="space-y-2 pt-1">
               <button 
                 type="submit"
-                className="w-full bg-[var(--archyv-accent)] hover:bg-[var(--archyv-accent-hover)] text-foreground font-semibold py-2.5 rounded-xl transition-colors shadow-sm"
+                disabled={isLoading}
+                className="w-full bg-[var(--archyv-accent)] hover:bg-[var(--archyv-accent-hover)] text-foreground font-semibold py-2.5 rounded-xl transition-colors shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
               >
-                Verify
+                {isLoading ? "Verifying..." : "Verify"}
               </button>
               
               <button 
@@ -171,9 +179,10 @@ export default function AdminLogin() {
             <div className="space-y-2 pt-1">
               <button 
                 type="submit"
-                className="w-full bg-[var(--archyv-accent)] hover:bg-[var(--archyv-accent-hover)] text-foreground font-semibold py-2.5 rounded-xl transition-colors shadow-sm"
+                disabled={isLoading}
+                className="w-full bg-[var(--archyv-accent)] hover:bg-[var(--archyv-accent-hover)] text-foreground font-semibold py-2.5 rounded-xl transition-colors shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
               >
-                Sign in
+                {isLoading ? "Signing in..." : "Sign in"}
               </button>
 
               <div className="relative flex items-center py-1.5">

@@ -13,13 +13,18 @@ export default function FacultyLogin() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { login, loginPasskey } = useAppContext();
   const [isPasskeyLoading, setIsPasskeyLoading] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
+    setError("");
+    setIsLoading(true);
     const success = await login(email, password);
+    setIsLoading(false);
     if (success) {
       router.push("/faculty/overview");
     } else {
@@ -108,9 +113,10 @@ export default function FacultyLogin() {
           <div className="space-y-2 pt-1">
             <button 
               type="submit"
-              className="w-full bg-[var(--archyv-accent)] hover:bg-[var(--archyv-accent-hover)] text-foreground font-semibold py-2.5 rounded-xl transition-colors shadow-sm"
+              disabled={isLoading}
+              className="w-full bg-[var(--archyv-accent)] hover:bg-[var(--archyv-accent-hover)] text-foreground font-semibold py-2.5 rounded-xl transition-colors shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
             >
-              Sign in
+              {isLoading ? "Signing in..." : "Sign in"}
             </button>
 
             <div className="relative flex items-center py-1.5">

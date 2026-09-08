@@ -36,7 +36,7 @@ export const testDelete = async (req: AuthRequest, res: Response) => {
     // Since public IDs can contain slashes, it might be encoded. Usually we get it from params correctly if routed well.
     const decodedId = decodeURIComponent(publicId);
 
-    const success = await deleteFile(decodedId);
+    const { success } = await deleteFile(decodedId);
     
     if (success) {
       res.status(200).json({ success: true, message: "File deleted successfully" });

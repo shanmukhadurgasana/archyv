@@ -85,6 +85,34 @@ export default function FacultyProfile() {
             {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
             {isUploading ? "Uploading..." : "Change Photo"}
           </button>
+          
+          {user.avatar && (
+            <button
+              disabled={isUploading}
+              onClick={async () => {
+                setIsUploading(true);
+                try {
+                  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/auth/me/avatar`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                  });
+                  if (res.ok) {
+                    updateUserProfile({ avatar: null });
+                  } else {
+                    alert("Failed to delete avatar");
+                  }
+                } catch (err) {
+                  console.error(err);
+                  alert("Error deleting avatar");
+                } finally {
+                  setIsUploading(false);
+                }
+              }}
+              className="mt-3 text-xs font-semibold text-red-500 hover:text-red-600 transition-colors disabled:opacity-50"
+            >
+              Delete Photo
+            </button>
+          )}
         </div>
 
         <div className="flex-1 space-y-6">

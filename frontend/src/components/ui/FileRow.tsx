@@ -93,7 +93,9 @@ export default function FileRow({ file, showActions = true, isTrash = false }: F
 
         <div className="hidden sm:block col-span-2 lg:col-span-1">
           {isTrash ? (
-            <span className="text-sm text-red-500 font-medium">{file.daysLeft} days left</span>
+            <span className="text-sm text-red-500 font-medium">
+              {file.daysLeft && file.daysLeft > 1 ? `${file.daysLeft} days left` : file.daysLeft === 1 ? `1 day left` : `Expires today`}
+            </span>
           ) : (
             <span className="text-sm text-gray-600">{file.size}</span>
           )}

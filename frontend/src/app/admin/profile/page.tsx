@@ -2,13 +2,18 @@
 
 import { useState } from "react";
 import PageHeader from "@/components/ui/PageHeader";
-import { Camera, User, Mail, Phone, Calendar, Circle, Clock, ShieldCheck, Hash, X } from "lucide-react";
+import { Camera, User, Mail, Phone, Calendar, Circle, Clock, ShieldCheck, Hash, X, AlertTriangle, Trash2 } from "lucide-react";
 import { useAppContext } from "@/store/AppContext";
 
 export default function AdminProfile() {
   const { currentUser, updateUserProfile } = useAppContext();
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({ name: "", email: "", phone: "", facultyId: "", role: "admin" as "admin" | "faculty" });
+  
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const user = currentUser?.role?.toLowerCase() === 'admin' ? currentUser : null;
 
@@ -32,6 +37,33 @@ export default function AdminProfile() {
 
   const handleCancel = () => {
     setIsEditing(false);
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!deletePassword) {
+      setDeleteError("Password is required.");
+      return;
+    }
+    setDeleteError("");
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/auth/account`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: deletePassword }),
+        credentials: 'include'
+      });
+      if (res.ok) {
+        window.location.href = "/auth/login";
+      } else {
+        const data = await res.json();
+        setDeleteError(data.message || "Failed to delete account.");
+      }
+    } catch (err) {
+      setDeleteError("An error occurred. Please try again.");
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   return (
@@ -85,6 +117,29 @@ export default function AdminProfile() {
               }}
             />
           </div>
+          {user.avatar && (
+            <button
+              onClick={async () => {
+                try {
+                  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/auth/me/avatar`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                  });
+                  if (res.ok) {
+                    updateUserProfile({ avatar: null });
+                  } else {
+                    alert("Failed to delete avatar");
+                  }
+                } catch (err) {
+                  console.error(err);
+                  alert("Error deleting avatar");
+                }
+              }}
+              className="mb-4 text-xs font-semibold text-red-500 hover:text-red-600 transition-colors"
+            >
+              Delete Photo
+            </button>
+          )}
           <h2 className="text-xl font-bold text-foreground mb-1">{user.name}</h2>
           <div className="flex items-center gap-1.5 px-3 py-1 bg-[var(--archyv-accent)]/10 text-[var(--archyv-accent-hover)] text-xs font-semibold rounded-full border border-[var(--archyv-accent)]/20 mb-6">
             <ShieldCheck className="w-3.5 h-3.5" />
@@ -263,8 +318,83 @@ export default function AdminProfile() {
               </div>
             </div>
           </div>
+
+          <div className="bg-white border border-red-200 rounded-2xl p-8 mt-6">
+            <div className="flex items-center gap-2 text-red-600 font-semibold mb-2">
+              <AlertTriangle className="w-5 h-5" />
+              Danger Zone
+            </div>
+            <p className="text-sm text-gray-500 mb-6">
+              Permanently delete your administrator account and all associated personal data. This action cannot be undone.
+            </p>
+            <button
+              onClick={() => {
+                setShowDeleteModal(true);
+                setDeletePassword("");
+                setDeleteError("");
+              }}
+              className="px-4 py-2 border border-red-200 text-red-600 font-semibold rounded-lg hover:bg-red-50 transition-colors text-sm flex items-center gap-2"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete Account
+            </button>
+          </div>
         </div>
       </div>
+
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-xl relative animate-in fade-in zoom-in-95 duration-200">
+            <button 
+              onClick={() => setShowDeleteModal(false)}
+              className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <div className="flex items-center gap-3 text-red-600 mb-2">
+              <div className="p-2 bg-red-100 rounded-lg">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <h2 className="text-xl font-bold text-gray-900">Delete Account</h2>
+            </div>
+            <p className="text-gray-600 text-sm mb-6 mt-4">
+              This action will permanently delete your admin account. Enter your current password to confirm.
+            </p>
+            {deleteError && (
+              <div className="mb-4 p-3 bg-red-50 text-red-600 text-sm rounded-lg border border-red-100">
+                {deleteError}
+              </div>
+            )}
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
+                <input 
+                  type="password"
+                  value={deletePassword}
+                  onChange={(e) => setDeletePassword(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500/50 focus:border-red-500 transition-all"
+                  placeholder="Enter your current password"
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-3 pt-2">
+              <button 
+                onClick={() => setShowDeleteModal(false)}
+                className="flex-1 px-4 py-2 bg-white border border-gray-200 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-50 hover:text-gray-900 transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleDeleteAccount}
+                disabled={!deletePassword || isDeleting}
+                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isDeleting ? "Deleting..." : "Delete Account"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

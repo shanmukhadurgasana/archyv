@@ -12,12 +12,15 @@ export default function AdminSignup() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const router = useRouter();
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
     setError("");
+    setIsLoading(true);
     
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/auth/signup`, {
@@ -34,9 +37,11 @@ export default function AdminSignup() {
       } else {
         const data = await response.json();
         setError(data.message || "Signup failed");
+        setIsLoading(false);
       }
     } catch (err) {
       setError("An error occurred during signup");
+      setIsLoading(false);
     }
   };
 
@@ -112,9 +117,10 @@ export default function AdminSignup() {
           <div className="space-y-2 pt-1">
             <button 
               type="submit"
-              className="w-full bg-[var(--archyv-accent)] hover:bg-[var(--archyv-accent-hover)] text-foreground font-semibold py-2.5 rounded-xl transition-colors shadow-sm"
+              disabled={isLoading}
+              className="w-full bg-[var(--archyv-accent)] hover:bg-[var(--archyv-accent-hover)] text-foreground font-semibold py-2.5 rounded-xl transition-colors shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
             >
-              Create Account
+              {isLoading ? "Creating Account..." : "Create Account"}
             </button>
 
             <div className="relative flex items-center py-1.5">

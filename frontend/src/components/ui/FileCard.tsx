@@ -97,6 +97,11 @@ export default function FileCard({ file, isTrash = false }: FileCardProps) {
         
         <div className="mt-auto flex flex-col text-xs text-gray-400 gap-0.5">
           <span>{file.date}</span>
+          {isTrash && (
+            <span className="text-red-500 font-medium mt-1">
+              {file.daysLeft && file.daysLeft > 1 ? `${file.daysLeft} days left` : file.daysLeft === 1 ? `1 day left` : `Expires today`}
+            </span>
+          )}
         </div>
       </div>
 

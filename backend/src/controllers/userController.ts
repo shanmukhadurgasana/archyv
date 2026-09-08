@@ -9,8 +9,7 @@ export const getUsers = async (req: AuthRequest, res: Response) => {
   try {
     const users = await prisma.user.findMany({
       where: {
-        role: Role.FACULTY,
-        adminId: req.user?.id
+        role: Role.FACULTY
       },
       include: {
         department: true
@@ -138,9 +137,6 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
     if (!userToUpdate) {
       return res.status(404).json({ message: "User not found" });
     }
-    if (userToUpdate.adminId !== req.user?.id) {
-      return res.status(403).json({ message: "Forbidden" });
-    }
 
     const updatedUser = await prisma.user.update({
       where: { id },
@@ -194,12 +190,9 @@ export const updateUserAvatar = async (req: AuthRequest, res: Response) => {
     if (!userToUpdate) {
       return res.status(404).json({ message: "User not found" });
     }
-    if (userToUpdate.adminId !== req.user?.id) {
-      return res.status(403).json({ message: "Forbidden" });
-    }
 
     const uploadResult = await uploadFile(req.file.buffer, req.file.originalname);
-    
+
     const updatedUser = await prisma.user.update({
       where: { id },
       data: { avatar: uploadResult.secure_url },
@@ -233,9 +226,6 @@ export const deleteUser = async (req: AuthRequest, res: Response) => {
     const userToDelete = await prisma.user.findUnique({ where: { id } });
     if (!userToDelete) {
       return res.status(404).json({ message: "User not found" });
-    }
-    if (userToDelete.adminId !== req.user?.id) {
-      return res.status(403).json({ message: "Forbidden" });
     }
 
     await prisma.user.delete({ where: { id } });

@@ -56,19 +56,30 @@ export const uploadFile = (fileBuffer: Buffer, originalName: string): Promise<Up
  * Deletes a file from Cloudinary by its public ID.
  * @param publicId The Cloudinary public ID.
  */
-export const deleteFile = async (publicId: string, resourceType?: "image" | "raw" | "video"): Promise<boolean> => {
+export const deleteFile = async (publicId: string, resourceType?: "image" | "raw" | "video"): Promise<{ success: boolean; alreadyDeleted?: boolean }> => {
   try {
     const typesToTry = resourceType ? [resourceType] : ["image", "raw", "video"];
     
+    let notFoundCount = 0;
+
     for (const type of typesToTry) {
-      const result = await cloudinary.uploader.destroy(publicId, { resource_type: type });
+      const result = await cloudinary.uploader.destroy(publicId, { resource_type: type, invalidate: true });
       if (result.result === "ok") {
-        return true;
+        return { success: true };
+      }
+      if (result.result === "not found") {
+        notFoundCount++;
       }
     }
     
+    // If all tested types return "not found", the asset doesn't exist
+    if (notFoundCount === typesToTry.length) {
+      console.log(`Cloudinary deletion idempotent: asset already missing for publicId ${publicId}`);
+      return { success: true, alreadyDeleted: true };
+    }
+    
     console.warn(`Cloudinary deletion not ok for publicId ${publicId}`);
-    return false;
+    return { success: false };
   } catch (error) {
     console.error(`Error deleting file with publicId ${publicId} from Cloudinary:`, error);
     throw error;

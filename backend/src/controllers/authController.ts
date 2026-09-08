@@ -78,22 +78,16 @@ export const login = async (req: Request, res: Response) => {
     const ipAddress = req.ip || req.socket.remoteAddress || "Unknown IP";
 
     if (user.isTwoFactorEnabled) {
-      const existingSession = await prisma.session.findFirst({
-        where: { userId: user.id, deviceInfo: userAgent, ipAddress: ipAddress, isValid: true }
+      const tempToken = jwt.sign(
+        { id: user.id, isPartial: true },
+        env.JWT_SECRET,
+        { expiresIn: "5m" }
+      );
+      return res.status(200).json({
+        require2FA: true,
+        tempToken,
+        message: "2FA code required"
       });
-
-      if (!existingSession) {
-        const tempToken = jwt.sign(
-          { id: user.id, isPartial: true },
-          env.JWT_SECRET,
-          { expiresIn: "5m" }
-        );
-        return res.status(200).json({
-          require2FA: true,
-          tempToken,
-          message: "2FA code required"
-        });
-      }
     }
 
     let session = await prisma.session.findFirst({
@@ -242,7 +236,7 @@ export const getCurrentUser = async (req: AuthRequest, res: Response) => {
   }
 };
 
-import { uploadFile } from "../services/cloudinary.service";
+import { uploadFile, deleteFile } from "../services/cloudinary.service";
 
 export const updateAvatar = async (req: AuthRequest, res: Response) => {
   try {
@@ -282,6 +276,72 @@ export const updateAvatar = async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error("Avatar update error:", error);
     res.status(500).json({ message: "Failed to update avatar" });
+  }
+};
+
+export const deleteAvatar = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) return res.status(401).json({ message: "Not authenticated" });
+
+    const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+    if (!user || !user.avatar) {
+      return res.status(400).json({ message: "No avatar to delete" });
+    }
+
+    const urlParts = user.avatar.split('/');
+    const uploadIndex = urlParts.indexOf('upload');
+    if (uploadIndex !== -1) {
+      let publicIdParts = urlParts.slice(uploadIndex + 1);
+      if (publicIdParts[0].startsWith('v')) {
+        publicIdParts = publicIdParts.slice(1);
+      }
+      let publicId = publicIdParts.join('/');
+      const lastDotIndex = publicId.lastIndexOf('.');
+      if (lastDotIndex !== -1) {
+        publicId = publicId.substring(0, lastDotIndex);
+      }
+      
+      try {
+        const { success } = await deleteFile(publicId, "image");
+        if (!success) {
+          return res.status(500).json({ success: false, message: "Failed to delete from Cloudinary" });
+        }
+      } catch (cldError) {
+        console.error("Cloudinary deletion failed:", cldError);
+        return res.status(500).json({ success: false, message: "Failed to delete from Cloudinary" });
+      }
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: req.user.id },
+      data: { avatar: null },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        facultyId: true,
+        departmentId: true,
+        phone: true,
+        status: true,
+        avatar: true,
+        dateOfJoin: true,
+        lastLogin: true,
+        department: { select: { name: true } }
+      }
+    });
+
+    const mappedUser = {
+      ...updatedUser,
+      department: updatedUser.department?.name,
+      dateOfJoin: updatedUser.dateOfJoin ? updatedUser.dateOfJoin.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "N/A",
+      lastLogin: updatedUser.lastLogin ? updatedUser.lastLogin.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: '2-digit', minute: '2-digit' }) : "Never",
+    };
+
+    res.status(200).json({ success: true, user: mappedUser });
+  } catch (error) {
+    console.error("Avatar delete error:", error);
+    res.status(500).json({ message: "Failed to delete avatar" });
   }
 };
 
@@ -355,11 +415,13 @@ export const updatePassword = async (req: AuthRequest, res: Response) => {
     const isValid = await bcrypt.compare(currentPassword, user.passwordHash);
     if (!isValid) return res.status(401).json({ message: "Incorrect previous password" });
 
+    console.log("Before password update 2FA secret:", user.twoFactorSecret);
     const passwordHash = await bcrypt.hash(newPassword, 10);
-    await prisma.user.update({
+    const updated = await prisma.user.update({
       where: { id: req.user.id },
       data: { passwordHash },
     });
+    console.log("After password update 2FA secret:", updated.twoFactorSecret);
 
     // Invalidate all active sessions for the user to secure the account
     await prisma.session.updateMany({
@@ -501,7 +563,8 @@ export const verify2FA = async (req: AuthRequest, res: Response) => {
     const user = await prisma.user.findUnique({ where: { id: req.user.id } });
     if (!user || !user.twoFactorSecret) return res.status(400).json({ message: "2FA not set up" });
 
-    const result = verifySync({ token: String(token), secret: user.twoFactorSecret, strategy: "totp", epochTolerance: 1 });
+    const cleanToken = String(token).replace(/\s+/g, '');
+    const result = verifySync({ token: cleanToken, secret: user.twoFactorSecret, strategy: "totp", epochTolerance: 30 });
     if (!result.valid) return res.status(400).json({ message: "Invalid 2FA code" });
 
     await prisma.user.update({
@@ -557,7 +620,8 @@ export const login2FA = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "Invalid 2FA state" });
     }
 
-    const result = verifySync({ token: String(token), secret: user.twoFactorSecret, strategy: "totp", epochTolerance: 1 });
+    const cleanToken = String(token).replace(/\s+/g, '');
+    const result = verifySync({ token: cleanToken, secret: user.twoFactorSecret, strategy: "totp", epochTolerance: 30 });
     if (!result.valid) return res.status(400).json({ message: "Invalid 2FA code" });
 
     const userAgent = req.headers["user-agent"] || "Unknown Device";
@@ -692,4 +756,99 @@ export const testAdmin = (req: AuthRequest, res: Response) => {
 
 export const testFaculty = (req: AuthRequest, res: Response) => {
   res.status(200).json({ message: "Faculty authenticated", user: req.user });
+};
+
+export const deleteAccount = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    const role = req.user?.role;
+    const { password } = req.body;
+
+    if (!userId || !role) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    if (role !== "ADMIN") {
+      return res.status(403).json({ message: "Only admins can delete their accounts via this endpoint" });
+    }
+
+    if (!password) {
+      return res.status(400).json({ message: "Password is required" });
+    }
+
+    const adminUser = await prisma.user.findUnique({ where: { id: userId } });
+    if (!adminUser) {
+      return res.status(404).json({ message: "Admin not found" });
+    }
+
+    const isValidPassword = await bcrypt.compare(password, adminUser.passwordHash);
+    if (!isValidPassword) {
+      return res.status(401).json({ message: "Invalid password" });
+    }
+
+    // Find another admin to reassign documents to avoid schema constraint errors
+    const anotherAdmin = await prisma.user.findFirst({
+      where: {
+        role: "ADMIN",
+        id: { not: userId }
+      }
+    });
+
+    if (!anotherAdmin) {
+      return res.status(400).json({ message: "Cannot delete the last remaining admin in the system." });
+    }
+
+    // Safe relation handling (No schema changes)
+    await prisma.$transaction(async (tx) => {
+      // 1. Reassign uploaded documents to another admin
+      await tx.document.updateMany({
+        where: { uploadedById: userId },
+        data: { uploadedById: anotherAdmin.id }
+      });
+
+      // 2. Clear approved/rejected by fields
+      await tx.document.updateMany({
+        where: { approvedById: userId },
+        data: { approvedById: null }
+      });
+      await tx.document.updateMany({
+        where: { rejectedById: userId },
+        data: { rejectedById: null }
+      });
+
+      // 3. Detach created faculty accounts
+      await tx.user.updateMany({
+        where: { adminId: userId },
+        data: { adminId: null }
+      });
+
+      // 4. Detach audit logs
+      await tx.auditLog.updateMany({
+        where: { userId: userId },
+        data: { userId: null }
+      });
+
+      // 5. Create the audit event before deleting the user (using another admin's ID since we can't reference a deleted user)
+      // Or we can just create the audit event with a null userId, but we need to track who was deleted.
+      await tx.auditLog.create({
+        data: {
+          action: "DELETE_ADMIN_ACCOUNT",
+          target: adminUser.email,
+          userId: anotherAdmin.id,
+          domain: "System"
+        }
+      });
+
+      // 6. Delete the admin user
+      await tx.user.delete({ where: { id: userId } });
+    });
+
+    // Invalidate session cookie
+    res.clearCookie("jwt");
+
+    return res.status(200).json({ success: true, message: "Account successfully deleted" });
+  } catch (error) {
+    console.error("Delete account error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
 };

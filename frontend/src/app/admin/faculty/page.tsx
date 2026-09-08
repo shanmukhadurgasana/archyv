@@ -15,6 +15,7 @@ export default function AdminFaculty() {
     designation: "", dateOfJoin: "", facultyId: "", initialPassword: "", status: "Active"
   });
   const [errors, setErrors] = useState<{ name?: string, email?: string, phone?: string, initialPassword?: string }>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [showDeleteModal, setShowDeleteModal] = useState<string | null>(null);
@@ -55,6 +56,9 @@ export default function AdminFaculty() {
       setErrors(newErrors);
       return;
     }
+    
+    if (isSubmitting) return;
+    setIsSubmitting(true);
 
     const result = await createFaculty({
       facultyId: newFaculty.facultyId || `fac-${Date.now()}`,
@@ -75,12 +79,16 @@ export default function AdminFaculty() {
     } else {
       setErrors({ email: result?.error || "Failed to create faculty. Email might be in use." });
     }
+    setIsSubmitting(false);
   };
 
   const handleEditFaculty = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     if (showEditModal) {
+      setIsSubmitting(true);
       await updateFaculty(showEditModal.id, editFacultyData);
+      setIsSubmitting(false);
       setShowEditModal(null);
     }
   };
@@ -324,9 +332,10 @@ export default function AdminFaculty() {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-[var(--archyv-accent)] hover:bg-[var(--archyv-accent-hover)] text-foreground text-sm font-semibold rounded-lg transition-colors shadow-sm"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 bg-[var(--archyv-accent)] hover:bg-[var(--archyv-accent-hover)] text-foreground text-sm font-semibold rounded-lg transition-colors shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
                 >
-                  Add Faculty
+                  {isSubmitting ? "Adding Faculty..." : "Add Faculty"}
                 </button>
               </div>
             </form>

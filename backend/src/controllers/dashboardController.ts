@@ -14,12 +14,7 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
     // RBAC Base Query for Documents
     let baseWhere: any = {};
     if ((userRole as string) === 'ADMIN' || (userRole as string) === 'admin') {
-      baseWhere.uploadedBy = {
-        OR: [
-          { id: userId },
-          { adminId: userId }
-        ]
-      };
+      // Global organization access for Admin
     } else {
       const userAdminId = (req.user as any)?.adminId;
       if (userAdminId) {
@@ -50,18 +45,13 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
     
     let facultyWhere: any = { role: 'FACULTY' };
     if ((userRole as string) === 'ADMIN' || (userRole as string) === 'admin') {
-      facultyWhere.adminId = userId;
+      // Global organization access
     }
     const totalFacultyPromise = prisma.user.count({ where: facultyWhere });
     
     let auditWhere: any = {};
     if ((userRole as string) === 'ADMIN' || (userRole as string) === 'admin') {
-      auditWhere.user = {
-        OR: [
-          { id: userId },
-          { adminId: userId }
-        ]
-      };
+      // Global organization access
     } else {
       auditWhere.userId = userId;
     }

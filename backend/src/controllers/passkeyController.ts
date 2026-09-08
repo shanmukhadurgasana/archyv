@@ -8,10 +8,9 @@ import jwt from "jsonwebtoken";
 import { createAuditLog } from "../services/audit.service";
 import crypto from "crypto";
 
-const rpName = "Archyv Platform";
-// For development on localhost, RP ID is localhost. In production, use the actual domain.
-const rpID = process.env.NODE_ENV === "production" ? new URL(env.FRONTEND_URL).hostname : "localhost";
-const expectedOrigin = env.FRONTEND_URL || "http://localhost:3000";
+const rpName = env.WEBAUTHN_RP_NAME;
+const rpID = env.WEBAUTHN_RP_ID;
+const expectedOrigin = env.WEBAUTHN_ORIGIN;
 
 /**
  * 1. Generate Registration Options

@@ -129,7 +129,7 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
     } catch (dbError) {
       // Rollback Cloudinary if DB fails
       console.error("Database creation failed, rolling back Cloudinary upload...");
-      await deleteFile(uploadResult.public_id, "auto" as any).catch(e => console.error("Rollback failed:", e));
+      await deleteFile(uploadResult.public_id).catch(e => console.error("Rollback failed:", e));
       throw dbError;
     }
 
@@ -185,15 +185,9 @@ export const getDocuments = async (req: AuthRequest, res: Response) => {
     }
     
     if ((userRole as string) === 'ADMIN' || (userRole as string) === 'admin') {
-      const uploadedByCondition: any = {};
       if (faculty && faculty !== "All Faculty") {
-        uploadedByCondition.name = faculty as string;
+        where.uploadedBy = { name: faculty as string };
       }
-      uploadedByCondition.OR = [
-        { id: userId },
-        { adminId: userId }
-      ];
-      where.uploadedBy = uploadedByCondition;
     } else {
       // Faculty logic
       const facultyAuthConditions: any[] = [
@@ -317,11 +311,8 @@ export const getDocumentById = async (req: AuthRequest, res: Response) => {
       if (!isOwner && !hasAdminAccess) {
         return res.status(403).json({ success: false, message: "Forbidden" });
       }
-    } else {
-      if (document.uploadedBy.id !== req.user?.id && document.uploadedBy.adminId !== req.user?.id) {
-        return res.status(403).json({ success: false, message: "Forbidden" });
-      }
     }
+    // Admins have global access, so no else block needed
 
     res.status(200).json({ success: true, document: {
         ...document,
@@ -364,11 +355,8 @@ export const toggleStar = async (req: AuthRequest, res: Response) => {
       if (!isOwner && !hasAdminAccess) {
         return res.status(403).json({ success: false, message: "Forbidden" });
       }
-    } else {
-      if (doc.uploadedBy.id !== userId && doc.uploadedBy.adminId !== userId) {
-        return res.status(403).json({ success: false, message: "Forbidden" });
-      }
     }
+    // Admins have global access, so no else block needed
 
     if (req.method === 'POST') {
       try {
@@ -404,6 +392,8 @@ import { v2 as cloudinary } from "cloudinary";
 
 
 
+import https from "https";
+
 export const viewDocument = async (req: AuthRequest, res: Response) => {
   try {
     const documentId = req.params.id;
@@ -430,23 +420,52 @@ export const viewDocument = async (req: AuthRequest, res: Response) => {
       if (!isOwner && !hasAdminAccess) {
         return res.status(403).json({ success: false, message: "Forbidden" });
       }
-    } else {
-      if (document.uploadedBy.id !== req.user?.id && document.uploadedBy.adminId !== req.user?.id) {
-        return res.status(403).json({ success: false, message: "Forbidden" });
-      }
     }
+    // Admins have global access, so no else block needed
 
-    // Force secure signed delivery with fl_attachment to bypass inline delivery blocking
     const publicId = document.cloudinaryPublicId;
     let url = document.cloudinaryUrl;
 
     if (typeof publicId === 'string') {
-      // Cloudinary strictly blocks PDF delivery on free tier accounts.
-      // We bypass this by requesting the PDF as an image (JPG), which Cloudinary natively rasterizes.
-      url = cloudinary.url(publicId + (document.type === 'PDF' ? '.jpg' : ''), {
-        sign_url: true,
-        resource_type: 'image'
-      });
+      if (document.type === 'PDF') {
+        // Bypass Cloudinary's free tier inline PDF block by requesting as an attachment
+        // and then proxying it via Express with inline headers so the browser's PDF viewer renders it.
+        url = cloudinary.url(publicId + '.pdf', {
+          sign_url: true,
+          secure: true,
+          resource_type: 'image',
+          flags: 'attachment'
+        });
+
+        // Proxy the PDF stream to the client
+        return https.get(url, (cloudinaryRes) => {
+          if (cloudinaryRes.statusCode !== 200) {
+            console.error(`Failed to fetch PDF from Cloudinary: Status ${cloudinaryRes.statusCode}`);
+            return res.status(cloudinaryRes.statusCode || 500).send('Failed to fetch document');
+          }
+          
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(document.name)}"`);
+          
+          // Forward content length if available
+          if (cloudinaryRes.headers['content-length']) {
+            res.setHeader('Content-Length', cloudinaryRes.headers['content-length']);
+          }
+
+          cloudinaryRes.pipe(res);
+        }).on('error', (err) => {
+          console.error("Error proxying document from Cloudinary:", err);
+          res.status(500).send('Error retrieving document');
+        });
+      } else {
+        // Other files like DOCX, XLSX, etc., or images
+        url = cloudinary.url(publicId, {
+          sign_url: true,
+          secure: true,
+          resource_type: 'image'
+        });
+        return res.redirect(url);
+      }
     }
 
     if (!url) {
@@ -476,7 +495,14 @@ export const softDeleteDocument = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ success: false, message: "Document not found" });
     }
 
-    if (document.uploadedBy.id !== req.user.id && document.uploadedBy.adminId !== req.user.id) {
+    let isAuthorized = true;
+    if (req.user.role !== 'ADMIN') {
+      if (document.uploadedBy.id !== req.user.id && document.uploadedBy.adminId !== req.user.id) {
+        isAuthorized = false;
+      }
+    }
+    
+    if (!isAuthorized) {
       return res.status(403).json({ success: false, message: "Forbidden" });
     }
 
@@ -513,14 +539,7 @@ export const getTrashedDocuments = async (req: AuthRequest, res: Response) => {
     const where: any = { isDeleted: true };
     const userRole = req.user?.role;
     const userId = req.user?.id;
-    if ((userRole as string) === 'ADMIN' || (userRole as string) === 'admin') {
-      where.uploadedBy = {
-        OR: [
-          { id: userId },
-          { adminId: userId }
-        ]
-      };
-    } else {
+    if ((userRole as string) !== 'ADMIN' && (userRole as string) !== 'admin') {
       where.uploadedById = userId;
     }
     
@@ -592,7 +611,14 @@ export const restoreDocument = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ success: false, message: "Document not found" });
     }
 
-    if (document.uploadedBy.id !== req.user.id && document.uploadedBy.adminId !== req.user.id) {
+    let isAuthorized = true;
+    if (req.user.role !== 'ADMIN') {
+      if (document.uploadedBy.id !== req.user.id && document.uploadedBy.adminId !== req.user.id) {
+        isAuthorized = false;
+      }
+    }
+
+    if (!isAuthorized) {
       return res.status(403).json({ success: false, message: "Forbidden" });
     }
 
@@ -637,15 +663,26 @@ export const permanentDeleteDocument = async (req: AuthRequest, res: Response) =
       return res.status(404).json({ success: false, message: "Trashed document not found" });
     }
 
-    if (document.uploadedBy.id !== req.user.id && document.uploadedBy.adminId !== req.user.id) {
+    let isAuthorized = true;
+    if (req.user.role !== 'ADMIN') {
+      if (document.uploadedBy.id !== req.user.id && document.uploadedBy.adminId !== req.user.id) {
+        isAuthorized = false;
+      }
+    }
+
+    if (!isAuthorized) {
       return res.status(403).json({ success: false, message: "Forbidden" });
     }
 
     if (document.cloudinaryPublicId) {
       try {
-        await deleteFile(document.cloudinaryPublicId, "image"); // type auto/image
+        const { success } = await deleteFile(document.cloudinaryPublicId);
+        if (!success) {
+          console.error("Cloudinary deletion returned false, aborting DB deletion for:", document.id);
+          return res.status(500).json({ success: false, message: "Failed to delete from Cloudinary" });
+        }
       } catch (cldError) {
-        console.error("Cloudinary deletion failed, aborting DB deletion:", cldError);
+        console.error("Cloudinary deletion failed with error, aborting DB deletion:", cldError);
         return res.status(500).json({ success: false, message: "Failed to delete from Cloudinary" });
       }
     }
@@ -664,14 +701,9 @@ export const permanentDeleteDocument = async (req: AuthRequest, res: Response) =
   }
 };
 
-export const cleanupExpiredDocuments = async (req: AuthRequest, res: Response) => {
+export const runCleanupJobCore = async () => {
+  console.log("Starting automatic 90-day retention cleanup...");
   try {
-    // This could be protected by an internal API key or Admin auth
-    // For testability we'll allow Admin to trigger it
-    if (!req.user || req.user.role?.toUpperCase() !== 'ADMIN') {
-      return res.status(403).json({ success: false, message: "Forbidden" });
-    }
-
     const expiredDocs = await prisma.document.findMany({
       where: {
         isDeleted: true,
@@ -684,21 +716,58 @@ export const cleanupExpiredDocuments = async (req: AuthRequest, res: Response) =
 
     for (const doc of expiredDocs) {
       try {
+        let canDeleteDb = true;
         if (doc.cloudinaryPublicId) {
-          await deleteFile(doc.cloudinaryPublicId, "image");
+          const { success } = await deleteFile(doc.cloudinaryPublicId);
+          if (!success) {
+            canDeleteDb = false;
+            console.error(`Cloudinary deletion returned false, skipping DB deletion for ${doc.id}`);
+          }
         }
-        await prisma.document.delete({ where: { id: doc.id } });
-        successCount++;
+        if (canDeleteDb) {
+          await prisma.document.delete({ where: { id: doc.id } });
+          successCount++;
+          
+          // Add Audit Log
+          // Since it's an automated system action, we might not have a req.user
+          // But we can insert a system audit log if the function createAuditLog allows it.
+          // The current createAuditLog expects a userId. We'll skip it if no user is available, 
+          // or we could create a "SYSTEM" user if the architecture has one. 
+          // For now, we rely on the server logs for cleanup monitoring as requested:
+          // "The backend should log useful cleanup information in development/server logs"
+        } else {
+          failureCount++;
+        }
       } catch (e) {
         console.error(`Failed to cleanup document ${doc.id}:`, e);
         failureCount++;
       }
     }
 
-    res.status(200).json({ 
-      success: true, 
-      message: `Cleanup finished. Deleted: ${successCount}, Failed: ${failureCount}` 
-    });
+    console.log(`Cleanup finished. Deleted: ${successCount}, Failed: ${failureCount}`);
+    return { success: true, successCount, failureCount };
+  } catch (error) {
+    console.error("Cleanup error:", error);
+    return { success: false, error };
+  }
+};
+
+export const cleanupExpiredDocuments = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user || req.user.role?.toUpperCase() !== 'ADMIN') {
+      return res.status(403).json({ success: false, message: "Forbidden" });
+    }
+
+    const result = await runCleanupJobCore();
+    
+    if (result.success) {
+      res.status(200).json({ 
+        success: true, 
+        message: `Cleanup finished. Deleted: ${result.successCount}, Failed: ${result.failureCount}` 
+      });
+    } else {
+      res.status(500).json({ success: false, message: "Failed to run cleanup" });
+    }
   } catch (error) {
     console.error("Cleanup error:", error);
     res.status(500).json({ success: false, message: "Failed to run cleanup" });

@@ -14,6 +14,9 @@ export const env = {
   CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME,
   CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY,
   CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,
+  WEBAUTHN_RP_NAME: process.env.WEBAUTHN_RP_NAME || "Archyv Platform",
+  WEBAUTHN_RP_ID: process.env.WEBAUTHN_RP_ID || "localhost",
+  WEBAUTHN_ORIGIN: process.env.WEBAUTHN_ORIGIN || "http://localhost:3000",
 };
 
 if (!env.DATABASE_URL) {

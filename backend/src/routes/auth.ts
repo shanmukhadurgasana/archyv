@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { signup, login, logout, getCurrentUser, updateAvatar, updateProfile, updatePassword, generate2FA, verify2FA, disable2FA, login2FA, getSessions, revokeSession, revokeAllOtherSessions, testAuth, testAdmin, testFaculty } from "../controllers/authController";
+import { signup, login, logout, getCurrentUser, updateAvatar, deleteAvatar, updateProfile, updatePassword, generate2FA, verify2FA, disable2FA, login2FA, getSessions, revokeSession, revokeAllOtherSessions, testAuth, testAdmin, testFaculty, deleteAccount } from "../controllers/authController";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { Role } from "@prisma/client";
 import multer from "multer";
@@ -43,8 +43,10 @@ router.post("/passkey/verify-authentication", verifyAuthenticationResponseHandle
 // Protected routes
 router.get("/me", requireAuth as any, getCurrentUser as any);
 router.patch("/me/avatar", requireAuth as any, upload.single("file"), updateAvatar as any);
+router.delete("/me/avatar", requireAuth as any, deleteAvatar as any);
 router.patch("/me/profile", requireAuth as any, updateProfile as any);
 router.patch("/me/password", requireAuth as any, updatePassword as any);
+router.delete("/account", requireAuth as any, deleteAccount as any);
 
 // Passkey Protected Registration/Management Routes
 router.get("/passkey/generate-registration-options", requireAuth as any, generateRegistrationOptionsHandler as any);

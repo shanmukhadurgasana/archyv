@@ -11,14 +11,7 @@ export const getAuditLogs = async (req: AuthRequest, res: Response) => {
     let auditWhere: any = {};
     const userRole = req.user?.role;
     const userId = req.user?.id;
-    if ((userRole as string) === 'ADMIN' || (userRole as string) === 'admin') {
-      auditWhere.user = {
-        OR: [
-          { id: userId },
-          { adminId: userId }
-        ]
-      };
-    } else {
+    if ((userRole as string) !== 'ADMIN' && (userRole as string) !== 'admin') {
       auditWhere.userId = userId;
     }
 
