@@ -74,9 +74,6 @@ export const login = async (req: Request, res: Response) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    const userAgent = req.headers["user-agent"] || "Unknown Device";
-    const ipAddress = req.ip || req.socket.remoteAddress || "Unknown IP";
-
     if (user.isTwoFactorEnabled) {
       const tempToken = jwt.sign(
         { id: user.id, isPartial: true },
@@ -87,25 +84,6 @@ export const login = async (req: Request, res: Response) => {
         require2FA: true,
         tempToken,
         message: "2FA code required"
-      });
-    }
-
-    let session = await prisma.session.findFirst({
-      where: { userId: user.id, deviceInfo: userAgent, ipAddress: ipAddress, isValid: true }
-    });
-
-    if (session) {
-      session = await prisma.session.update({
-        where: { id: session.id },
-        data: { lastActivity: new Date() }
-      });
-    } else {
-      session = await prisma.session.create({
-        data: {
-          userId: user.id,
-          deviceInfo: userAgent,
-          ipAddress: ipAddress,
-        }
       });
     }
 
@@ -126,7 +104,6 @@ export const login = async (req: Request, res: Response) => {
         facultyId: user.facultyId,
         departmentId: user.departmentId,
         adminId: user.adminId,
-        sessionId: session.id,
       },
       env.JWT_SECRET,
       { expiresIn: "1d" } // 1 day expiration
@@ -174,12 +151,7 @@ export const logout = async (req: Request, res: Response) => {
       const decoded = jwt.verify(token, env.JWT_SECRET) as any;
       if (decoded.id) {
         createAuditLog(decoded.id, "LOGOUT", decoded.email || decoded.id, "Auth").catch(console.error);
-        if (decoded.sessionId) {
-          await prisma.session.update({
-            where: { id: decoded.sessionId },
-            data: { isValid: false }
-          }).catch(console.error);
-        }
+
       }
     } catch (e) {
       // ignore token verification errors on logout
@@ -423,12 +395,6 @@ export const updatePassword = async (req: AuthRequest, res: Response) => {
     });
     console.log("After password update 2FA secret:", updated.twoFactorSecret);
 
-    // Invalidate all active sessions for the user to secure the account
-    await prisma.session.updateMany({
-      where: { userId: user.id },
-      data: { isValid: false },
-    });
-
     res.status(200).json({ success: true, message: "Password updated successfully" });
   } catch (error) {
     console.error("Update password error:", error);
@@ -515,10 +481,6 @@ export const resetPassword = async (req: Request, res: Response) => {
       prisma.passwordResetToken.update({
         where: { id: resetTokenRecord.id },
         data: { usedAt: new Date() },
-      }),
-      prisma.session.updateMany({
-        where: { userId: resetTokenRecord.userId },
-        data: { isValid: false },
       })
     ]);
 
@@ -624,28 +586,6 @@ export const login2FA = async (req: Request, res: Response) => {
     const result = verifySync({ token: cleanToken, secret: user.twoFactorSecret, strategy: "totp", epochTolerance: 30 });
     if (!result.valid) return res.status(400).json({ message: "Invalid 2FA code" });
 
-    const userAgent = req.headers["user-agent"] || "Unknown Device";
-    const ipAddress = req.ip || req.socket.remoteAddress || "Unknown IP";
-
-    let session = await prisma.session.findFirst({
-      where: { userId: user.id, deviceInfo: userAgent, ipAddress: ipAddress, isValid: true }
-    });
-
-    if (session) {
-      session = await prisma.session.update({
-        where: { id: session.id },
-        data: { lastActivity: new Date() }
-      });
-    } else {
-      session = await prisma.session.create({
-        data: {
-          userId: user.id,
-          deviceInfo: userAgent,
-          ipAddress: ipAddress,
-        }
-      });
-    }
-
     const finalToken = jwt.sign(
       {
         id: user.id,
@@ -654,7 +594,6 @@ export const login2FA = async (req: Request, res: Response) => {
         facultyId: user.facultyId,
         departmentId: user.departmentId,
         adminId: user.adminId,
-        sessionId: session.id,
       },
       env.JWT_SECRET,
       { expiresIn: "1d" }
@@ -686,61 +625,6 @@ export const login2FA = async (req: Request, res: Response) => {
     res.status(200).json({ user: mappedUser });
   } catch (error) {
     console.error("2FA Login error:", error);
-    res.status(500).json({ message: "Internal server error" });
-  }
-};
-
-// Session Endpoints
-
-export const getSessions = async (req: AuthRequest, res: Response) => {
-  try {
-    if (!req.user) return res.status(401).json({ message: "Not authenticated" });
-    const sessions = await prisma.session.findMany({
-      where: { userId: req.user.id, isValid: true },
-      orderBy: { lastActivity: "desc" }
-    });
-    // Mark the current session
-    const currentSessionId = (req.user as any).sessionId;
-    const mappedSessions = sessions.map(s => ({
-      ...s,
-      isCurrent: s.id === currentSessionId
-    }));
-    res.status(200).json({ sessions: mappedSessions });
-  } catch (error) {
-    console.error("Get sessions error:", error);
-    res.status(500).json({ message: "Internal server error" });
-  }
-};
-
-export const revokeSession = async (req: AuthRequest, res: Response) => {
-  try {
-    if (!req.user) return res.status(401).json({ message: "Not authenticated" });
-    const { id } = req.params;
-    await prisma.session.updateMany({
-      where: { id, userId: req.user.id },
-      data: { isValid: false }
-    });
-    res.status(200).json({ success: true, message: "Session revoked" });
-  } catch (error) {
-    console.error("Revoke session error:", error);
-    res.status(500).json({ message: "Internal server error" });
-  }
-};
-
-export const revokeAllOtherSessions = async (req: AuthRequest, res: Response) => {
-  try {
-    if (!req.user) return res.status(401).json({ message: "Not authenticated" });
-    const currentSessionId = (req.user as any).sessionId;
-    await prisma.session.updateMany({
-      where: { 
-        userId: req.user.id,
-        id: { not: currentSessionId }
-      },
-      data: { isValid: false }
-    });
-    res.status(200).json({ success: true, message: "Other sessions revoked" });
-  } catch (error) {
-    console.error("Revoke other sessions error:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 };

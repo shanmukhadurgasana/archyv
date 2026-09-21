@@ -33,7 +33,6 @@ model User {
   createdByAdmin                       User?             @relation("CreatedBy", fields: [adminId], references: [id])
   createdUsers                         User[]            @relation("CreatedBy")
   department                           Department?       @relation(fields: [departmentId], references: [id])
-  sessions                             Session[]
   passwordResetTokens                  PasswordResetToken[]
   passkeys                             Passkey[]
   currentChallenge                     String?
@@ -154,19 +153,6 @@ enum DocumentStatus {
   REJECTED
 }
 
-model Session {
-  id           String   @id @default(uuid())
-  userId       String
-  deviceInfo   String?
-  ipAddress    String?
-  createdAt    DateTime @default(now())
-  lastActivity DateTime @default(now())
-  isValid      Boolean  @default(true)
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([isValid])
-}
 
 model DocumentFacultyAccess {
   id         String   @id @default(uuid())

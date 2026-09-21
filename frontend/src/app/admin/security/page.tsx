@@ -2,23 +2,15 @@
 
 import { useState, useEffect } from "react";
 import PageHeader from "@/components/ui/PageHeader";
-import { Shield, Smartphone, Laptop, Loader2, AlertCircle } from "lucide-react";
+import { Shield, Loader2, AlertCircle } from "lucide-react";
 import { useAppContext } from "@/store/AppContext";
 import Image from "next/image";
 
-interface Session {
-  id: string;
-  deviceInfo: string;
-  ipAddress: string;
-  createdAt: string;
-  lastActivity: string;
-  isCurrent: boolean;
-}
+
 
 export default function AdminSecurity() {
   const { currentUser, updateUserProfile } = useAppContext();
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [loadingSessions, setLoadingSessions] = useState(true);
+
   
   // 2FA state
   const [qrCode, setQrCode] = useState("");
@@ -28,25 +20,7 @@ export default function AdminSecurity() {
   const [success, setSuccess] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
 
-  useEffect(() => {
-    fetchSessions();
-  }, []);
 
-  const fetchSessions = async () => {
-    try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/auth/sessions`, {
-        credentials: "include",
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setSessions(data.sessions);
-      }
-    } catch (error) {
-      console.error("Failed to fetch sessions", error);
-    } finally {
-      setLoadingSessions(false);
-    }
-  };
 
   const handleGenerate2FA = async () => {
     setError("");
@@ -118,41 +92,13 @@ export default function AdminSecurity() {
     }
   };
 
-  const handleRevokeSession = async (id: string) => {
-    try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/auth/sessions/${id}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (res.ok) {
-        fetchSessions();
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
 
-  const handleRevokeAllOther = async () => {
-    try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/auth/sessions`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (res.ok) {
-        fetchSessions();
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const formatDate = (d: string) => new Date(d).toLocaleString();
 
   return (
     <div className="max-w-4xl">
       <PageHeader 
         title="Security" 
-        subtitle="Manage security settings and active sessions for your admin account."
+        subtitle="Manage security settings for your admin account."
       />
 
       <div className="space-y-6">
@@ -256,66 +202,7 @@ export default function AdminSecurity() {
           </div>
         </div>
 
-        <div className="bg-white border border-[var(--border)] rounded-2xl p-8">
-          <div className="flex items-center gap-4 mb-6">
-            <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-blue-500">
-              <Laptop className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-foreground">Active Sessions</h2>
-              <p className="text-sm text-gray-500">Manage your active sessions across all devices.</p>
-            </div>
-          </div>
 
-          <div className="pl-16 space-y-4">
-            {loadingSessions ? (
-              <div className="flex items-center gap-2 text-sm text-gray-500">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Loading sessions...
-              </div>
-            ) : sessions.length === 0 ? (
-              <div className="text-sm text-gray-500">No active sessions found.</div>
-            ) : (
-              sessions.map(session => (
-                <div key={session.id} className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 border rounded-xl ${session.isCurrent ? 'border-gray-200 bg-gray-50/50' : 'border-gray-100'}`}>
-                  <div className="flex items-start gap-3">
-                    {session.deviceInfo.toLowerCase().includes("mobile") ? (
-                      <Smartphone className="w-5 h-5 text-gray-400 mt-0.5" />
-                    ) : (
-                      <Laptop className="w-5 h-5 text-gray-400 mt-0.5" />
-                    )}
-                    <div>
-                      <div className="font-semibold text-foreground flex items-center gap-2">
-                        {session.deviceInfo}
-                        {session.isCurrent && (
-                          <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] rounded-full uppercase tracking-wider font-bold">This Device</span>
-                        )}
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1">Last active: {formatDate(session.lastActivity)}</div>
-                    </div>
-                  </div>
-                  {!session.isCurrent && (
-                    <button 
-                      onClick={() => handleRevokeSession(session.id)}
-                      className="px-3 py-1.5 border border-red-200 text-red-500 hover:bg-red-50 text-xs font-semibold rounded-lg transition-colors"
-                    >
-                      Sign out
-                    </button>
-                  )}
-                </div>
-              ))
-            )}
-            
-            {sessions.length > 1 && (
-              <button 
-                onClick={handleRevokeAllOther}
-                className="mt-2 px-4 py-2 bg-white border border-gray-200 text-red-500 font-medium rounded-lg hover:bg-red-50 transition-colors text-sm"
-              >
-                Sign out of all other devices
-              </button>
-            )}
-          </div>
-        </div>
       </div>
     </div>
   );

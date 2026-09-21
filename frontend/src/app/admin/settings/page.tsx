@@ -54,7 +54,7 @@ export default function AdminSettings() {
       });
 
       if (response.ok) {
-        setSuccess("Password updated successfully! Other sessions revoked.");
+        setSuccess("Password updated successfully!");
         setPrevPassword("");
         setNewPassword("");
         setConfirmPassword("");

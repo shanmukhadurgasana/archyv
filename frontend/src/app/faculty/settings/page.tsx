@@ -51,7 +51,7 @@ export default function FacultySettings() {
       });
 
       if (response.ok) {
-        setSuccess("Password updated successfully! Other sessions revoked.");
+        setSuccess("Password updated successfully!");
         setCurrentPassword("");
         setNewPassword("");
         setConfirmPassword("");

@@ -240,7 +240,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const login2FA = async (tempToken: string, token: string) => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/auth/login/2fa`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/auth/2fa/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

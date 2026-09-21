@@ -230,29 +230,6 @@ export const verifyAuthenticationResponseHandler = async (req: Request, res: Res
       // Delete used challenge
       await prisma.authChallenge.delete({ where: { id: authChallenge.id } });
 
-      // -- Create standard ARCHYV session --
-      const userAgent = req.headers["user-agent"] || "Unknown Device";
-      const ipAddress = req.ip || req.socket.remoteAddress || "Unknown IP";
-
-      let session = await prisma.session.findFirst({
-        where: { userId: user.id, deviceInfo: userAgent, ipAddress: ipAddress, isValid: true }
-      });
-
-      if (session) {
-        session = await prisma.session.update({
-          where: { id: session.id },
-          data: { lastActivity: new Date() }
-        });
-      } else {
-        session = await prisma.session.create({
-          data: {
-            userId: user.id,
-            deviceInfo: userAgent,
-            ipAddress: ipAddress,
-          }
-        });
-      }
-
       const currentLoginTime = new Date();
       await prisma.user.update({
         where: { id: user.id },
@@ -267,7 +244,6 @@ export const verifyAuthenticationResponseHandler = async (req: Request, res: Res
           facultyId: user.facultyId,
           departmentId: user.departmentId,
           adminId: user.adminId,
-          sessionId: session.id,
         },
         env.JWT_SECRET,
         { expiresIn: "1d" }

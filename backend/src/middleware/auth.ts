@@ -29,18 +29,7 @@ export const requireAuth = async (req: AuthRequest, res: Response, next: NextFun
       return res.status(401).json({ message: "Invalid session state" });
     }
 
-    if (decoded.sessionId) {
-      const session = await prisma.session.findUnique({ where: { id: decoded.sessionId } });
-      if (!session || !session.isValid) {
-        return res.status(401).json({ message: "Session revoked or expired" });
-      }
-      
-      // Optionally update lastActivity asynchronously
-      prisma.session.update({
-        where: { id: decoded.sessionId },
-        data: { lastActivity: new Date() }
-      }).catch((e: any) => console.error("Failed to update session activity", e));
-    }
+
 
     // Attach user to request
     req.user = {

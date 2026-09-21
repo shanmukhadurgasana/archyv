@@ -14,7 +14,7 @@ export default function FacultyUpload() {
   const [department, setDepartment] = useState("CSD");
   const [domain, setDomain] = useState("Admissions");
   const [year, setYear] = useState("2023-24");
-  
+
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -77,12 +77,12 @@ export default function FacultyUpload() {
       if (!response.ok) {
         throw new Error("Failed to upload document");
       }
-      
+
       const data = await response.json();
-      
+
       // Update global context immediately so it's available without a full refresh
       if (data.document && addDocument) {
-         addDocument(data.document);
+        addDocument(data.document);
       }
 
       setShowSuccess(true);
@@ -98,22 +98,22 @@ export default function FacultyUpload() {
 
   return (
     <div>
-      <PageHeader 
-        title="Upload Department Document" 
+      <PageHeader
+        title="Upload Department Document"
         subtitle="Upload files (PDF, JPG, PNG, DOCX, PPTX) to be processed and organized."
       />
 
       <div className="flex flex-col lg:flex-row gap-6 items-start pb-8">
         <div className="flex-1 w-full bg-white border border-[var(--border)] rounded-2xl p-8 flex flex-col min-h-[500px] lg:sticky lg:top-6">
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            onChange={handleFileChange} 
-            className="hidden" 
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            className="hidden"
             accept=".pdf,.jpg,.jpeg,.png,.docx,.pptx"
           />
-          
-          <div 
+
+          <div
             onClick={() => fileInputRef.current?.click()}
             onDragOver={onDragOver}
             onDragLeave={onDragLeave}
@@ -129,7 +129,7 @@ export default function FacultyUpload() {
                 <p className="text-sm text-gray-500 mb-6">
                   {selectedFile.size < 1024 * 1024 ? `${(selectedFile.size / 1024).toFixed(1)} KB` : `${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB`}
                 </p>
-                <button 
+                <button
                   onClick={() => setSelectedFile(null)}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg border border-red-200 text-xs font-semibold text-red-500 hover:bg-red-50 transition-colors shadow-sm"
                 >
@@ -156,20 +156,20 @@ export default function FacultyUpload() {
             <Info className="w-5 h-5 text-[var(--archyv-accent-hover)] shrink-0 mt-0.5" />
             <div className="text-sm text-gray-600">
               <p>Supported formats: PDF, JPG, PNG, DOCX, PPTX</p>
-              <p>Maximum file size: 50 MB</p>
+              <p>Maximum file size: 10 MB</p>
             </div>
           </div>
         </div>
 
         <div className="w-full lg:w-[360px] shrink-0 bg-white border border-[var(--border)] rounded-2xl p-5">
           <h2 className="text-lg font-bold text-foreground mb-6">Document Metadata</h2>
-          
+
           <form className="space-y-4 flex flex-col" onSubmit={(e) => { e.preventDefault(); handleUpload(); }}>
             <div className="space-y-1.5">
               <label className="text-sm font-semibold text-foreground">Document Title</label>
-              <input 
-                type="text" 
-                placeholder="e.g. Placement Report 2026" 
+              <input
+                type="text"
+                placeholder="e.g. Placement Report 2026"
                 value={title}
                 onChange={e => setTitle(e.target.value)}
                 required
@@ -179,7 +179,7 @@ export default function FacultyUpload() {
 
             <div className="space-y-1.5">
               <label className="text-sm font-semibold text-foreground">Department</label>
-              <CustomDropdown 
+              <CustomDropdown
                 value={department}
                 onChange={setDepartment}
                 options={["CSD", "CSIT"]}
@@ -189,7 +189,7 @@ export default function FacultyUpload() {
 
             <div className="space-y-1.5">
               <label className="text-sm font-semibold text-foreground">Domain</label>
-              <CustomDropdown 
+              <CustomDropdown
                 value={domain}
                 onChange={setDomain}
                 options={["Admissions", "Administrative", "Examination", "Placements", "Events"]}
@@ -199,7 +199,7 @@ export default function FacultyUpload() {
 
             <div className="space-y-1.5">
               <label className="text-sm font-semibold text-foreground">Academic Year</label>
-              <CustomDropdown 
+              <CustomDropdown
                 value={year}
                 onChange={setYear}
                 options={["2023-24", "2024-25", "2025-26"]}
@@ -215,7 +215,7 @@ export default function FacultyUpload() {
                 <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600">
                   <Lock className="w-4 h-4" />
                 </div>
-                <select 
+                <select
                   disabled
                   className="w-full pl-10 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-foreground appearance-none cursor-not-allowed"
                 >
@@ -224,7 +224,7 @@ export default function FacultyUpload() {
               </div>
             </div>
 
-            <button 
+            <button
               type="submit"
               disabled={isUploading}
               className="w-full bg-[var(--archyv-accent)] hover:bg-[var(--archyv-accent-hover)] text-foreground font-semibold py-2.5 rounded-lg transition-colors shadow-sm flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
