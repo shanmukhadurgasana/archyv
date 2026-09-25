@@ -113,7 +113,7 @@ export const login = async (req: Request, res: Response) => {
     res.cookie("jwt", token, {
       httpOnly: true,
       secure: env.NODE_ENV === "production",
-      sameSite: "strict",
+      sameSite: env.NODE_ENV === "production" ? "none" : "lax",
       maxAge: 24 * 60 * 60 * 1000, // 1 day in ms
     });
 
@@ -161,6 +161,8 @@ export const logout = async (req: Request, res: Response) => {
   res.cookie("jwt", "", {
     httpOnly: true,
     expires: new Date(0),
+    secure: env.NODE_ENV === "production",
+    sameSite: env.NODE_ENV === "production" ? "none" : "lax",
   });
   res.status(200).json({ message: "Logged out successfully" });
 };
@@ -602,7 +604,7 @@ export const login2FA = async (req: Request, res: Response) => {
     res.cookie("jwt", finalToken, {
       httpOnly: true,
       secure: env.NODE_ENV === "production",
-      sameSite: "strict",
+      sameSite: env.NODE_ENV === "production" ? "none" : "lax",
       maxAge: 24 * 60 * 60 * 1000,
     });
 

@@ -252,7 +252,7 @@ export const verifyAuthenticationResponseHandler = async (req: Request, res: Res
       res.cookie("jwt", token, {
         httpOnly: true,
         secure: env.NODE_ENV === "production",
-        sameSite: "strict",
+        sameSite: env.NODE_ENV === "production" ? "none" : "lax",
         maxAge: 24 * 60 * 60 * 1000,
       });
 
