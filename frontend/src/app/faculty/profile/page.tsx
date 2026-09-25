@@ -97,7 +97,7 @@ export default function FacultyProfile() {
                     credentials: 'include'
                   });
                   if (res.ok) {
-                    updateUserProfile({ avatar: null });
+                    updateUserProfile({ avatar: undefined });
                   } else {
                     alert("Failed to delete avatar");
                   }
