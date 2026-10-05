@@ -16,21 +16,11 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
     if ((userRole as string) === 'ADMIN' || (userRole as string) === 'admin') {
       // Global organization access for Admin
     } else {
-      const userAdminId = (req.user as any)?.adminId;
-      if (userAdminId) {
-        baseWhere.OR = [
-          { uploadedById: userId },
-          {
-            uploadedById: userAdminId,
-            OR: [
-              { accessType: 'ALL_FACULTY' },
-              { facultyAccess: { some: { facultyId: userId } } }
-            ]
-          }
-        ];
-      } else {
-        baseWhere.uploadedById = userId;
-      }
+      baseWhere.OR = [
+        { uploadedById: userId },
+        { accessType: 'ALL_FACULTY' },
+        { facultyAccess: { some: { facultyId: userId } } }
+      ];
     }
 
     // Fetch documents and domains concurrently
@@ -40,7 +30,7 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
     // we fetch the required scalar fields and aggregate in memory.
     const allowedDocsPromise = prisma.document.findMany({
       where: baseWhere,
-      select: { sizeBytes: true, isDeleted: true, domainId: true }
+      select: { sizeBytes: true, isDeleted: true, domainId: true, status: true }
     });
     
     let facultyWhere: any = { role: 'FACULTY' };
@@ -73,7 +63,9 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
     ]);
 
     let totalBytes = 0;
-    let totalDocuments = 0;
+    let totalDocuments = 0; // Approved documents
+    let pendingDocuments = 0;
+    let rejectedDocuments = 0;
     let trashDocuments = 0;
     const domainCountsMap = new Map<string, number>();
 
@@ -82,9 +74,15 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
       if (doc.isDeleted) {
         trashDocuments++;
       } else {
-        totalDocuments++;
-        if (doc.domainId) {
-          domainCountsMap.set(doc.domainId, (domainCountsMap.get(doc.domainId) || 0) + 1);
+        if (doc.status === 'APPROVED') {
+          totalDocuments++;
+          if (doc.domainId) {
+            domainCountsMap.set(doc.domainId, (domainCountsMap.get(doc.domainId) || 0) + 1);
+          }
+        } else if (doc.status === 'PENDING') {
+          pendingDocuments++;
+        } else if (doc.status === 'REJECTED') {
+          rejectedDocuments++;
         }
       }
     });
@@ -107,6 +105,8 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
       success: true,
       stats: {
         totalDocuments,
+        pendingDocuments,
+        rejectedDocuments,
         trashDocuments,
         totalFaculty,
         totalBytes,

@@ -1,11 +1,12 @@
-import { Star, Clock, Trash2, CheckCircle, XCircle } from "lucide-react";
+import { Star, Clock, Trash2, CheckCircle, XCircle, MoreVertical } from "lucide-react";
 import Image from "next/image";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { Document } from "@/lib/mock-data";
 import clsx from "clsx";
 import { useAppContext } from "@/store/AppContext";
 import ConfirmationModal from "@/components/ui/ConfirmationModal";
+import AccessModal from "@/components/ui/AccessModal";
 
 interface FileCardProps {
   file: Document;
@@ -13,9 +14,35 @@ interface FileCardProps {
 }
 
 export default function FileCard({ file, isTrash = false }: FileCardProps) {
-  const { toggleStar, currentUser, starredDocs, deleteDocument, restoreDocument } = useAppContext();
+  const { toggleStar, currentUser, starredDocs, deleteDocument, restoreDocument, approveDocument, declineDocument } = useAppContext();
   const pathname = usePathname();
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showAccessModal, setShowAccessModal] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ top: false });
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsMenuOpen(false);
+      }
+    };
+
+    if (isMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleEscape);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isMenuOpen]);
   
   const userStarredIds = currentUser ? starredDocs[currentUser.id] || [] : [];
   const isStarred = userStarredIds.includes(file.id);
@@ -23,6 +50,65 @@ export default function FileCard({ file, isTrash = false }: FileCardProps) {
   const handleOpenFile = async () => {
     const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
     window.open(`${baseUrl}/documents/${file.id}/view`, "_blank");
+  };
+
+  const handleNativeShare = async () => {
+    if (!navigator.share) {
+      alert("Sharing is not supported on this browser.");
+      return;
+    }
+
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+      const documentUrl = `${baseUrl}/documents/${file.id}/view`;
+      
+      let shareFile: File | null = null;
+
+      if (navigator.canShare) {
+        try {
+          const response = await fetch(documentUrl, { credentials: "include" });
+          const blob = await response.blob();
+          
+          const filename = file.name || "document";
+          const fileToShare = new File([blob], filename, { type: blob.type || "application/octet-stream" });
+          
+          if (navigator.canShare({ files: [fileToShare] })) {
+            shareFile = fileToShare;
+          }
+        } catch (e) {
+          console.warn("Could not fetch file for native sharing. Falling back to URL sharing.");
+        }
+      }
+
+      if (shareFile) {
+        await navigator.share({
+          files: [shareFile],
+          title: "Share Document",
+          text: `Sharing document from ARCHYV: ${file.name}`
+        });
+      } else {
+        await navigator.share({
+          title: "Share Document",
+          text: `Sharing document from ARCHYV: ${file.name}\n\n${documentUrl}`,
+          url: documentUrl
+        });
+      }
+    } catch (error: any) {
+      if (error.name !== 'AbortError') {
+        console.error("Error sharing:", error);
+      }
+    }
+  };
+
+  const toggleMenu = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isMenuOpen) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const isNearBottom = window.innerHeight - rect.bottom < 150;
+      setMenuPosition({ top: isNearBottom });
+    }
+    setIsMenuOpen(!isMenuOpen);
   };
 
   return (
@@ -49,6 +135,12 @@ export default function FileCard({ file, isTrash = false }: FileCardProps) {
         className="bg-white border border-[var(--border)] rounded-2xl p-5 flex flex-col hover:shadow-sm transition-shadow group relative cursor-pointer"
       >
       <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
+        {file.status === 'PENDING' && (
+          <span className="bg-yellow-100 text-yellow-800 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase shadow-sm">Pending</span>
+        )}
+        {file.status === 'REJECTED' && (
+          <span className="bg-red-100 text-red-800 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase shadow-sm">Declined</span>
+        )}
         {isTrash ? (
           <div className="flex items-center gap-2">
             <button 
@@ -68,20 +160,64 @@ export default function FileCard({ file, isTrash = false }: FileCardProps) {
               <Star className={clsx("w-5 h-5 transition-colors", isStarred ? "fill-[var(--archyv-accent)] text-[var(--archyv-accent)]" : "hover:text-[var(--archyv-accent)]")} />
             </button>
             
-            {currentUser?.role?.toLowerCase() === 'admin' && (
+            <div className="relative" ref={menuRef} onClick={(e) => e.stopPropagation()}>
               <button 
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowDeleteModal(true); }} 
-                className="text-gray-300 group-hover:text-red-400 transition-colors"
+                onClick={toggleMenu} 
+                className="text-gray-300 group-hover:text-gray-600 transition-colors p-0.5 rounded-md hover:bg-gray-100"
+                aria-label="More actions"
               >
-                <Trash2 className="w-5 h-5" />
+                <MoreVertical className="w-5 h-5" />
               </button>
-            )}
+              
+              {isMenuOpen && (
+                <div className={`absolute ${menuPosition.top ? 'bottom-full mb-1' : 'top-full mt-1'} right-0 w-36 bg-white border border-[var(--border)] rounded-lg shadow-lg overflow-hidden z-50 py-1`} onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsMenuOpen(false); handleNativeShare(); }}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    Share
+                  </button>
+                  {currentUser?.role?.toLowerCase() === 'admin' && (
+                    <button
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsMenuOpen(false); setShowAccessModal(true); }}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      Access
+                    </button>
+                  )}
+                  {currentUser?.role?.toLowerCase() === 'admin' && file.status === 'PENDING' && (
+                    <>
+                      <button
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsMenuOpen(false); approveDocument(file.id); }}
+                        className="w-full text-left px-4 py-2 text-sm text-green-600 hover:bg-green-50 transition-colors"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsMenuOpen(false); declineDocument(file.id); }}
+                        className="w-full text-left px-4 py-2 text-sm text-orange-600 hover:bg-orange-50 transition-colors"
+                      >
+                        Decline
+                      </button>
+                    </>
+                  )}
+                  {currentUser?.role?.toLowerCase() === 'admin' && (
+                    <button
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsMenuOpen(false); setShowDeleteModal(true); }}
+                      className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
       
       <div className="w-16 h-16 mb-4 relative opacity-90 group-hover:opacity-100 transition-opacity">
-        <Image src="/logo.png" alt="File" fill className="object-contain" />
+        <Image src="/logo.png" alt="File" fill sizes="64px" className="object-contain" />
       </div>
       
       <div className="flex-1 flex flex-col">
@@ -115,6 +251,11 @@ export default function FileCard({ file, isTrash = false }: FileCardProps) {
           setShowDeleteModal(false);
         }}
         onCancel={() => setShowDeleteModal(false)}
+      />
+      <AccessModal
+        isOpen={showAccessModal}
+        document={file}
+        onClose={() => setShowAccessModal(false)}
       />
     </>
   );

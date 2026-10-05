@@ -83,6 +83,9 @@ model Document {
   rejectedById                     String?
   rejectedAt                       DateTime?
   rejectionReason                  String?
+  branch                           String?
+  semester                         String?
+  section                          String?
   isDeleted                        Boolean           @default(false)
   deletedAt                        DateTime?
   retentionUntil                   DateTime?

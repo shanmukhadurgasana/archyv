@@ -13,6 +13,9 @@ router.get("/health", checkHealth);
 
 import auditRoutes from "./audit";
 
+import domainRoutes from "./domains";
+import academicYearRoutes from "./academicYears";
+
 // Future API Mounts (Phase 3+)
 router.use("/auth", authRoutes);
 router.use("/users", userRoutes);
@@ -20,9 +23,10 @@ router.use("/storage", storageRoutes);
 router.use("/documents", documentRoutes);
 router.use("/audit-logs", auditRoutes);
 import dashboardRoutes from "./dashboard";
+import departmentRoutes from "./departments";
 router.use("/dashboard", dashboardRoutes);
-// router.use("/departments", departmentRoutes);
-// router.use("/domains", domainRoutes);
-// router.use("/academic-years", academicYearRoutes);
+router.use("/departments", departmentRoutes);
+router.use("/domains", domainRoutes);
+router.use("/academic-years", academicYearRoutes);
 
 export default router;

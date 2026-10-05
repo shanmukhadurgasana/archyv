@@ -41,6 +41,9 @@ export interface Document {
   accessList?: string[];
   year?: string;
   filename?: string;
+  status?: string;
+  accessType?: string;
+  facultyAccess?: any[];
 }
 
 export const mockFacultyUser: User = {

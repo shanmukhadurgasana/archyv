@@ -16,7 +16,7 @@ interface FileRowProps {
 }
 
 export default function FileRow({ file, showActions = true, isTrash = false }: FileRowProps) {
-  const { toggleStar, deleteDocument, restoreDocument, permanentDeleteDocument, currentUser, starredDocs } = useAppContext();
+  const { toggleStar, deleteDocument, restoreDocument, permanentDeleteDocument, currentUser, starredDocs, approveDocument, declineDocument } = useAppContext();
   const pathname = usePathname();
   
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -55,14 +55,20 @@ export default function FileRow({ file, showActions = true, isTrash = false }: F
       className="group flex items-center gap-4 p-4 border-b border-[var(--border)] hover:bg-gray-50/50 transition-colors cursor-pointer"
     >
       <div className="w-10 h-10 shrink-0 relative opacity-90">
-        <Image src="/logo.png" alt="File" fill className="object-contain" />
+        <Image src="/logo.png" alt="File" fill sizes="40px" className="object-contain" />
       </div>
 
       <div className="flex-1 min-w-0 grid grid-cols-12 gap-4 items-center">
         <div className="col-span-12 sm:col-span-4 lg:col-span-3 min-w-0">
           <div className="font-medium text-sm text-foreground truncate">{file.name}</div>
-          <div className="text-xs text-gray-500 truncate">
-            {isTrash ? file.department : `/${file.domain}/${file.department || 'General'}`}
+          <div className="text-xs text-gray-500 truncate flex items-center gap-2">
+            <span>{isTrash ? file.department : `/${file.domain}/${file.department || 'General'}`}</span>
+            {file.status === 'PENDING' && (
+              <span className="bg-yellow-100 text-yellow-800 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase">Pending</span>
+            )}
+            {file.status === 'REJECTED' && (
+              <span className="bg-red-100 text-red-800 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase">Declined</span>
+            )}
           </div>
         </div>
 
@@ -118,8 +124,18 @@ export default function FileRow({ file, showActions = true, isTrash = false }: F
               <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleStar(file.id); }} className="text-gray-300 hover:text-[var(--archyv-accent)] transition-colors">
                 <Star className={clsx("w-4 h-4", isStarred && "fill-[var(--archyv-accent)] text-[var(--archyv-accent)]")} />
               </button>
+              {currentUser?.role?.toLowerCase() === 'admin' && file.status === 'PENDING' && (
+                <>
+                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); approveDocument(file.id); }} className="text-gray-300 hover:text-green-600 transition-colors" title="Approve">
+                    <CheckCircle className="w-4 h-4" />
+                  </button>
+                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); declineDocument(file.id); }} className="text-gray-300 hover:text-orange-500 transition-colors" title="Decline">
+                    <XCircle className="w-4 h-4" />
+                  </button>
+                </>
+              )}
               {currentUser?.role?.toLowerCase() === 'admin' && (
-                <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowDeleteModal(true); }} className="text-gray-300 hover:text-red-500 transition-colors">
+                <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowDeleteModal(true); }} className="text-gray-300 hover:text-red-500 transition-colors" title="Delete">
                   <Trash2 className="w-4 h-4" />
                 </button>
               )}

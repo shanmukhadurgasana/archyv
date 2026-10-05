@@ -7,6 +7,21 @@ import {
 } from "@/lib/mock-data";
 import { deleteFile } from "@/lib/storage";
 
+export interface Domain {
+  id: string;
+  name: string;
+}
+
+export interface AcademicYear {
+  id: string;
+  year: string;
+}
+
+export interface Department {
+  id: string;
+  name: string;
+}
+
 export interface AuditLog {
   id: string;
   time: string;
@@ -20,8 +35,12 @@ interface AppState {
   currentUser: User | null;
   users: User[];
   documents: Document[];
+  pendingDocuments: Document[];
   trashDocuments: Document[];
   auditLogs: AuditLog[];
+  domains: Domain[];
+  academicYears: AcademicYear[];
+  departments: Department[];
   starredDocs: Record<string, string[]>; // mapping of userId to array of docIds
   globalSearchQuery: string;
 }
@@ -36,6 +55,9 @@ interface AppContextType extends Omit<AppState, "currentUser"> {
   deleteDocument: (id: string) => Promise<void>;
   restoreDocument: (id: string) => Promise<void>;
   permanentDeleteDocument: (id: string) => Promise<void>;
+  approveDocument: (id: string) => Promise<void>;
+  declineDocument: (id: string) => Promise<void>;
+  updateDocumentAccess: (id: string, accessType: string, selectedFacultyIds: string[]) => Promise<{ success: boolean, error?: string }>;
   toggleStar: (docId: string) => void;
   createFaculty: (user: any) => Promise<{ success: boolean; error?: string }>;
   deleteFaculty: (id: string) => Promise<void>;
@@ -44,6 +66,7 @@ interface AppContextType extends Omit<AppState, "currentUser"> {
   setGlobalSearchQuery: (query: string) => void;
   fetchTrashDocuments: (params?: any) => Promise<void>;
   fetchDocuments: (params?: any) => Promise<void>;
+  fetchPendingDocuments: (params?: any) => Promise<void>;
   addDocument: (doc: Document) => void;
   isDataLoading: boolean;
   fetchDashboardStats: () => Promise<void>;
@@ -51,6 +74,9 @@ interface AppContextType extends Omit<AppState, "currentUser"> {
   paginationData: any;
   trashPaginationData: any;
   fetchAuditLogs: (page?: number, limit?: number) => Promise<void>;
+  fetchDomains: () => Promise<void>;
+  fetchAcademicYears: () => Promise<void>;
+  fetchDepartments: () => Promise<void>;
   authStatus: "loading" | "authenticated" | "unauthenticated";
 }
 
@@ -80,8 +106,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const [documents, setDocuments] = useState<Document[]>([]);
+  const [pendingDocuments, setPendingDocuments] = useState<Document[]>([]);
   const [trashDocuments, setTrashDocuments] = useState<Document[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [domains, setDomains] = useState<Domain[]>([]);
+  const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [globalSearchQuery, setGlobalSearchQuery] = useState("");
   const [dashboardStats, setDashboardStats] = useState<any>(null);
   const [paginationData, setPaginationData] = useState<any>(null);
@@ -139,6 +169,64 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const fetchPendingDocuments = async (params?: any) => {
+    try {
+      const queryParams = { ...params, status: currentUser?.role === 'faculty' ? 'PENDING,REJECTED' : 'PENDING' };
+      const queryString = buildQueryString(queryParams);
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/documents${queryString ? `?${queryString}` : ''}`, {
+        credentials: "include",
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setPendingDocuments(data.documents);
+      }
+    } catch (e) {
+      console.error("Failed to fetch pending documents");
+    }
+  };
+
+  const fetchDomains = async () => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/domains`, {
+        credentials: "include",
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setDomains(data.domains);
+      }
+    } catch (e) {
+      console.error("Failed to fetch domains");
+    }
+  };
+
+  const fetchAcademicYears = async () => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/academic-years`, {
+        credentials: "include",
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setAcademicYears(data.academicYears);
+      }
+    } catch (e) {
+      console.error("Failed to fetch academic years");
+    }
+  };
+
+  const fetchDepartments = async () => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/departments`, {
+        credentials: "include",
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setDepartments(data.departments);
+      }
+    } catch (e) {
+      console.error("Failed to fetch departments");
+    }
+  };
+
   const initializeData = async (user: User) => {
     setIsDataLoading(true);
     const isAdmin = user.role.toLowerCase() === 'admin';
@@ -147,6 +235,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await Promise.allSettled([
       fetchDocuments(),
       fetchTrashDocuments(),
+      fetchPendingDocuments(),
+      fetchDomains(),
+      fetchAcademicYears(),
+      fetchDepartments(),
     ]);
     setIsDataLoading(false);
 
@@ -159,7 +251,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const addDocument = (doc: Document) => {
-    setDocuments(prev => [doc, ...prev]);
+    if (doc.status === 'PENDING' || doc.status === 'REJECTED') {
+      setPendingDocuments(prev => [doc, ...prev]);
+    } else {
+      setDocuments(prev => [doc, ...prev]);
+    }
+    
+    // Update dashboard stats optimistically
+    if (dashboardStats) {
+      setDashboardStats((prev: any) => ({
+        ...prev,
+        pendingDocuments: doc.status === 'PENDING' ? prev.pendingDocuments + 1 : prev.pendingDocuments,
+        totalDocuments: doc.status === 'APPROVED' ? prev.totalDocuments + 1 : prev.totalDocuments,
+      }));
+    }
   };
 
   const [starredDocs, setStarredDocs] = useState<Record<string, string[]>>({});
@@ -325,11 +430,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (currentUser?.role.toLowerCase() !== "admin") return;
     
     // Grab the document before it's deleted to move it to trash optimistically
-    const docToDelete = documents.find(d => d.id === id);
+    const docToDelete = documents.find(d => d.id === id) || pendingDocuments.find(d => d.id === id);
     if (!docToDelete) return;
     
     // Optimistic Update
     setDocuments(prev => prev.filter(d => d.id !== id));
+    setPendingDocuments(prev => prev.filter(d => d.id !== id));
     
     const trashedDoc = {
       ...docToDelete,
@@ -343,7 +449,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setDashboardStats((prev: any) => ({
             ...prev,
             trashDocuments: prev.trashDocuments + 1,
-            totalDocuments: Math.max(0, prev.totalDocuments - 1),
+            totalDocuments: docToDelete.status === 'APPROVED' ? Math.max(0, prev.totalDocuments - 1) : prev.totalDocuments,
+            pendingDocuments: docToDelete.status === 'PENDING' ? Math.max(0, prev.pendingDocuments - 1) : prev.pendingDocuments,
         }));
     }
 
@@ -356,15 +463,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
         throw new Error("Failed to delete document");
       }
     } catch (e) {
-      console.error(e);
+      console.warn("Failed to delete document:", e instanceof Error ? e.message : e);
       // Revert Optimistic Update
-      setDocuments(prev => [docToDelete, ...prev]);
+      if (docToDelete.status === 'PENDING' || docToDelete.status === 'REJECTED') {
+        setPendingDocuments(prev => [docToDelete, ...prev]);
+      } else {
+        setDocuments(prev => [docToDelete, ...prev]);
+      }
       setTrashDocuments(prev => prev.filter(d => d.id !== id));
       if (dashboardStats) {
           setDashboardStats((prev: any) => ({
               ...prev,
               trashDocuments: Math.max(0, prev.trashDocuments - 1),
-              totalDocuments: prev.totalDocuments + 1,
+              totalDocuments: docToDelete.status === 'APPROVED' ? prev.totalDocuments + 1 : prev.totalDocuments,
+              pendingDocuments: docToDelete.status === 'PENDING' ? prev.pendingDocuments + 1 : prev.pendingDocuments,
           }));
       }
       alert("Error deleting document. Reverted changes.");
@@ -383,13 +495,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const restoredDoc = { ...docToRestore, isDeleted: false };
     delete restoredDoc.deletedDate;
     delete restoredDoc.daysLeft;
-    setDocuments(prev => [restoredDoc, ...prev]);
+    
+    if (restoredDoc.status === 'PENDING' || restoredDoc.status === 'REJECTED') {
+      setPendingDocuments(prev => [restoredDoc, ...prev]);
+    } else {
+      setDocuments(prev => [restoredDoc, ...prev]);
+    }
     
     if (dashboardStats) {
         setDashboardStats((prev: any) => ({
             ...prev,
             trashDocuments: Math.max(0, prev.trashDocuments - 1),
-            totalDocuments: prev.totalDocuments + 1,
+            totalDocuments: restoredDoc.status === 'APPROVED' ? prev.totalDocuments + 1 : prev.totalDocuments,
+            pendingDocuments: restoredDoc.status === 'PENDING' ? prev.pendingDocuments + 1 : prev.pendingDocuments,
         }));
     }
 
@@ -402,15 +520,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
         throw new Error("Failed to restore document");
       }
     } catch (e) {
-      console.error(e);
+      console.warn("Failed to restore document:", e instanceof Error ? e.message : e);
       // Revert Optimistic Update
       setTrashDocuments(prev => [docToRestore, ...prev]);
-      setDocuments(prev => prev.filter(d => d.id !== id));
+      if (restoredDoc.status === 'PENDING' || restoredDoc.status === 'REJECTED') {
+        setPendingDocuments(prev => prev.filter(d => d.id !== id));
+      } else {
+        setDocuments(prev => prev.filter(d => d.id !== id));
+      }
       if (dashboardStats) {
           setDashboardStats((prev: any) => ({
               ...prev,
               trashDocuments: prev.trashDocuments + 1,
-              totalDocuments: Math.max(0, prev.totalDocuments - 1),
+              totalDocuments: restoredDoc.status === 'APPROVED' ? Math.max(0, prev.totalDocuments - 1) : prev.totalDocuments,
+              pendingDocuments: restoredDoc.status === 'PENDING' ? Math.max(0, prev.pendingDocuments - 1) : prev.pendingDocuments,
           }));
       }
       alert("Error restoring document. Reverted changes.");
@@ -435,10 +558,71 @@ export function AppProvider({ children }: { children: ReactNode }) {
         throw new Error("Failed to permanently delete document");
       }
     } catch (e) {
-      console.error(e);
+      console.warn("Failed to permanently delete document:", e instanceof Error ? e.message : e);
       // Revert Optimistic Update
       setTrashDocuments(prev => [docToPermanentlyDelete, ...prev]);
       alert("Error permanently deleting document. Reverted changes.");
+    }
+  };
+
+  const approveDocument = async (id: string) => {
+    if (currentUser?.role.toLowerCase() !== "admin") return;
+    const docToApprove = pendingDocuments.find(d => d.id === id);
+    if (!docToApprove) return;
+
+    setPendingDocuments(prev => prev.filter(d => d.id !== id));
+    setDocuments(prev => [{ ...docToApprove, status: 'APPROVED' }, ...prev]);
+    
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/documents/${id}/approve`, {
+        method: 'POST',
+        credentials: 'include'
+      });
+      if (!res.ok) throw new Error("Failed to approve");
+    } catch (e) {
+      setPendingDocuments(prev => [docToApprove, ...prev]);
+      setDocuments(prev => prev.filter(d => d.id !== id));
+      alert("Error approving document");
+    }
+  };
+
+  const declineDocument = async (id: string) => {
+    if (currentUser?.role.toLowerCase() !== "admin") return;
+    const docToDecline = pendingDocuments.find(d => d.id === id);
+    if (!docToDecline) return;
+
+    setPendingDocuments(prev => prev.filter(d => d.id !== id));
+    
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/documents/${id}/reject`, {
+        method: 'POST',
+        credentials: 'include'
+      });
+      if (!res.ok) throw new Error("Failed to decline");
+    } catch (e) {
+      setPendingDocuments(prev => [docToDecline, ...prev]);
+      alert("Error declining document");
+    }
+  };
+
+  const updateDocumentAccess = async (id: string, accessType: string, selectedFacultyIds: string[]) => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/documents/${id}/access`, {
+        method: 'PATCH',
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ accessType, selectedFacultyIds })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        if (data.document) {
+          setDocuments(prev => prev.map(d => d.id === id ? data.document : d));
+        }
+        return { success: true };
+      }
+      return { success: false, error: data.message };
+    } catch (e) {
+      return { success: false, error: "Network error" };
     }
   };
 
@@ -469,7 +653,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         throw new Error("Failed to toggle star");
       }
     } catch (e) {
-      console.error(e);
+      console.warn("Failed to toggle star:", e instanceof Error ? e.message : e);
       // Revert optimistic update on error
       setStarredDocs(prev => ({
         ...prev,
@@ -571,14 +755,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     currentUser,
     users,
     documents,
+    pendingDocuments,
     trashDocuments,
     fetchTrashDocuments,
     fetchDocuments,
+    fetchPendingDocuments,
     fetchDashboardStats,
     dashboardStats,
     paginationData,
     trashPaginationData,
     fetchAuditLogs,auditLogs,
+    domains,
+    fetchDomains,
+    academicYears,
+    fetchAcademicYears,
+    departments,
+    fetchDepartments,
     starredDocs,
     login,
     login2FA,
@@ -587,6 +779,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     deleteDocument,
     restoreDocument,
     permanentDeleteDocument,
+    approveDocument,
+    declineDocument,
+    updateDocumentAccess,
     toggleStar,
     createFaculty,
     deleteFaculty,

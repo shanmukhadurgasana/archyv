@@ -12,7 +12,10 @@ import {
   getTrashedDocuments,
   restoreDocument,
   permanentDeleteDocument,
-  cleanupExpiredDocuments
+  cleanupExpiredDocuments,
+  approveDocument,
+  declineDocument,
+  updateDocumentAccess
 } from "../controllers/documentController";
 
 const router = Router();
@@ -60,5 +63,14 @@ router.delete("/:id/star", toggleStar as any);
 
 // GET /api/documents/:id/view - View/Download a document
 router.get("/:id/view", viewDocument as any);
+
+// POST /api/documents/:id/approve - Approve a pending document
+router.post("/:id/approve", requireRole(Role.ADMIN) as any, approveDocument as any);
+
+// POST /api/documents/:id/reject - Reject a pending document
+router.post("/:id/reject", requireRole(Role.ADMIN) as any, declineDocument as any);
+
+// PATCH /api/documents/:id/access - Update document access (Admin only)
+router.patch("/:id/access", requireRole(Role.ADMIN) as any, updateDocumentAccess as any);
 
 export default router;

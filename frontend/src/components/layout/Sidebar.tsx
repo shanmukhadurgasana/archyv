@@ -97,6 +97,7 @@ export default function Sidebar({ role }: SidebarProps) {
 
   const facultyDocs = [
     { label: "Documents", href: "/faculty/documents", icon: FileText },
+    { label: "Pending", href: "/faculty/pending", icon: FileText },
     { label: "Admin Uploads", href: "/faculty/admin-uploads", icon: CloudUpload },
     { label: "Upload", href: "/faculty/upload", icon: Upload },
   ];
@@ -104,6 +105,7 @@ export default function Sidebar({ role }: SidebarProps) {
   const adminNav = [
     { label: "Overview", href: "/admin/overview", icon: Home },
     { label: "Files", href: "/admin/files", icon: Folder },
+    { label: "Pending", href: "/admin/pending", icon: FileText },
     { label: "Starred", href: "/admin/starred", icon: Star },
     { label: "Trash", href: "/admin/trash", icon: Trash2 },
   ];
@@ -113,6 +115,7 @@ export default function Sidebar({ role }: SidebarProps) {
     { label: "Documents", href: "/admin/documents", icon: FileText },
     { label: "Upload", href: "/admin/upload", icon: Upload },
     { label: "Audit Logs", href: "/admin/audit-logs", icon: List },
+    { label: "Domains & Years", href: "/admin/manage-options", icon: Settings },
   ];
 
   const accountNav = [

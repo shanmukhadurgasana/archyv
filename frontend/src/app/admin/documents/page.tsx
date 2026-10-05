@@ -13,16 +13,10 @@ import { useDataView } from "@/hooks/useDataView";
 import { useAppContext } from "@/store/AppContext";
 
 export default function AdminDocuments() {
-  const { documents, users, isDataLoading } = useAppContext();
+  const { documents, users, isDataLoading, domains } = useAppContext();
   const allFiles = documents.filter(f => !f.isDeleted);
 
-  const uniqueDomains = [
-    "Admissions", 
-    "Examination", 
-    "Placements", 
-    "Events", 
-    "Administrative"
-  ];
+  const uniqueDomains = domains.map(d => d.name);
   const totalDomains = 5;
   
   const facultyUsers = users.filter(u => u.role === "faculty");

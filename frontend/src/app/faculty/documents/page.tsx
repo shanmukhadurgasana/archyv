@@ -12,12 +12,10 @@ import clsx from "clsx";
 import { useAppContext } from "@/store/AppContext";
 
 export default function FacultyDocuments() {
-  const domains = ["Admissions", "Administrative", "Examination", "Placements", "Events"];
-  const [expandedDomains, setExpandedDomains] = useState<Record<string, boolean>>({
-    Admissions: true,
-  });
+  const [expandedDomains, setExpandedDomains] = useState<Record<string, boolean>>({});
 
-  const { documents, globalSearchQuery, isDataLoading } = useAppContext();
+  const { documents, globalSearchQuery, isDataLoading, domains: domainObjs } = useAppContext();
+  const domains = domainObjs.map(d => d.name);
   const allFiles = documents.filter(f => !f.isDeleted);
 
   const toggleDomain = (domain: string) => {

@@ -3,21 +3,40 @@
 import PageHeader from "@/components/ui/PageHeader";
 import { UploadCloud, Folder, Info, Users, FileText, X } from "lucide-react";
 import { useAppContext } from "@/store/AppContext";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import CustomDropdown from "@/components/ui/CustomDropdown";
 
 export default function AdminUpload() {
   const router = useRouter();
   const [title, setTitle] = useState("");
-  const [department, setDepartment] = useState("CSD");
-  const [domain, setDomain] = useState("Admissions");
-  const [year, setYear] = useState("2023-24");
+  const [department, setDepartment] = useState("");
+  const [domain, setDomain] = useState("");
+  const [year, setYear] = useState("");
+  const [branch, setBranch] = useState("");
+  const [semester, setSemester] = useState("");
+  const [section, setSection] = useState("");
   const [accessType, setAccessType] = useState<string>("None of the Faculty");
   const [selectedFacultyNames, setSelectedFacultyNames] = useState<string[]>([]);
 
-  const { users, addDocument } = useAppContext();
-  const facultyUsers = users.filter(u => u.role === "faculty");
+  const { users, addDocument, domains, academicYears, departments } = useAppContext();
+  
+  // Initialize defaults when context data loads
+  useEffect(() => {
+    if (domains.length > 0 && !domain) setDomain(domains[0].name);
+    if (academicYears.length > 0 && !year) setYear(academicYears[0].year);
+    if (departments.length > 0 && !department) setDepartment(departments[0].name);
+  }, [domains, academicYears, departments]);
+
+  // Auto-generate title based on fields
+  useEffect(() => {
+    const generatedTitle = [domain, year, branch, semester, section]
+      .filter(Boolean)
+      .join(".");
+    setTitle(generatedTitle);
+  }, [domain, year, branch, semester, section]);
+
+  const facultyUsers = users.filter(u => u.role.toUpperCase() === "FACULTY" && u.status === "Active");
   const facultyNames = facultyUsers.map(u => u.name);
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -72,6 +91,9 @@ export default function AdminUpload() {
       formData.append("domain", domain);
       formData.append("department", department);
       formData.append("academicYear", year);
+      formData.append("branch", branch);
+      formData.append("semester", semester);
+      formData.append("section", section);
 
       let finalAccessType = "NONE";
       if (accessType === "All Faculty") finalAccessType = "ALL_FACULTY";
@@ -91,7 +113,12 @@ export default function AdminUpload() {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to upload document");
+        let errMsg = "Failed to upload document";
+        try {
+          const errData = await response.json();
+          if (errData.message) errMsg = errData.message;
+        } catch(e) {}
+        throw new Error(errMsg);
       }
 
       const data = await response.json();
@@ -101,9 +128,9 @@ export default function AdminUpload() {
       setTimeout(() => {
         router.push("/admin/files");
       }, 2000);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert("Failed to upload file. Please try again.");
+      alert(err.message || "Failed to upload file. Please try again.");
       setIsUploading(false);
     }
   };
@@ -178,14 +205,13 @@ export default function AdminUpload() {
 
           <form className="space-y-4 flex flex-col" onSubmit={(e) => { e.preventDefault(); handleUpload(); }}>
             <div className="space-y-1.5">
-              <label className="text-sm font-semibold text-foreground">Document Title</label>
+              <label className="text-sm font-semibold text-foreground">Document Title (Auto-generated)</label>
               <input
                 type="text"
-                placeholder="e.g. Placement Report 2026"
+                placeholder="Title will be auto-generated..."
                 value={title}
-                onChange={e => setTitle(e.target.value)}
-                required
-                className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--archyv-accent)]/50 focus:border-[var(--archyv-accent)] transition-all"
+                readOnly
+                className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-500 cursor-not-allowed focus:outline-none transition-all"
               />
             </div>
 
@@ -194,7 +220,7 @@ export default function AdminUpload() {
               <CustomDropdown
                 value={department}
                 onChange={setDepartment}
-                options={["CSD", "CSIT"]}
+                options={departments.map(d => d.name)}
                 fullWidth
               />
               {/* Note: The label in CustomDropdown is optional. We are using the external label for consistency with other inputs. */}
@@ -205,7 +231,7 @@ export default function AdminUpload() {
               <CustomDropdown
                 value={domain}
                 onChange={setDomain}
-                options={["Admissions", "Administrative", "Examination", "Placements", "Events"]}
+                options={domains.map(d => d.name)}
                 fullWidth
               />
             </div>
@@ -215,9 +241,45 @@ export default function AdminUpload() {
               <CustomDropdown
                 value={year}
                 onChange={setYear}
-                options={["2023-24", "2024-25", "2025-26"]}
+                options={academicYears.map(y => y.year)}
                 fullWidth
               />
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-foreground">Branch</label>
+                <input
+                  type="text"
+                  placeholder="e.g. CSE"
+                  value={branch}
+                  onChange={e => setBranch(e.target.value.toUpperCase())}
+                  required
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--archyv-accent)]/50 focus:border-[var(--archyv-accent)] transition-all"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-foreground">Sem</label>
+                <input
+                  type="text"
+                  placeholder="e.g. 3"
+                  value={semester}
+                  onChange={e => setSemester(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--archyv-accent)]/50 focus:border-[var(--archyv-accent)] transition-all"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-foreground">Sec</label>
+                <input
+                  type="text"
+                  placeholder="e.g. A"
+                  value={section}
+                  onChange={e => setSection(e.target.value.toUpperCase())}
+                  required
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--archyv-accent)]/50 focus:border-[var(--archyv-accent)] transition-all"
+                />
+              </div>
             </div>
 
             <div className="space-y-1.5 pb-2">

@@ -16,11 +16,16 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ success: false, message: "No file provided" });
     }
 
-    const { name, domain, department, academicYear, accessType, selectedFacultyIds } = req.body;
+    const { name: originalTitle, domain, department, academicYear, accessType, selectedFacultyIds, branch, semester, section } = req.body;
 
-    if (!name || !domain) {
-      return res.status(400).json({ success: false, message: "Name and domain are required" });
+    if (!domain || !academicYear || !branch || !semester || !section) {
+      return res.status(400).json({ success: false, message: "Missing required fields for document naming" });
     }
+
+    const originalExt = req.file.originalname.split(".").pop() || "";
+    const canonicalName = `${domain}.${academicYear}.${branch}.${semester}.${section}${originalExt ? "." + originalExt : ""}`;
+    const sanitizedFileName = canonicalName.replace(/[/\\]/g, "");
+
 
     // Lookup Foreign Keys Concurrently
     const [domainRecord, deptRecord, yearRecord] = await Promise.all([
@@ -52,7 +57,7 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
     else if (ext === "xlsx") type = "XLSX";
 
     // 1. Upload to Cloudinary
-    const uploadResult = await uploadFile(req.file.buffer, req.file.originalname);
+    const uploadResult = await uploadFile(req.file.buffer, sanitizedFileName);
     
     let parsedAccessType: DocumentAccess = "NONE";
     if (accessType === "ALL_FACULTY") parsedAccessType = "ALL_FACULTY";
@@ -64,7 +69,7 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
         const ids: string[] = JSON.parse(selectedFacultyIds);
         if (Array.isArray(ids) && ids.length > 0) {
           const validFaculties = await prisma.user.findMany({
-            where: { id: { in: ids }, adminId: req.user.id }
+            where: { id: { in: ids }, role: 'FACULTY' }
           });
           if (validFaculties.length !== ids.length) {
             return res.status(403).json({ success: false, message: "Unauthorized faculty selection" });
@@ -82,7 +87,7 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
     try {
       const document = await prisma.document.create({
         data: {
-          name,
+          name: sanitizedFileName,
           type,
           sizeBytes: BigInt(req.file.size),
           cloudinaryUrl: uploadResult.secure_url,
@@ -91,6 +96,10 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
           domainId: domainRecord.id,
           departmentId,
           academicYearId,
+          branch,
+          semester,
+          section,
+          status: req.user.role?.toUpperCase() === 'ADMIN' ? 'APPROVED' : 'PENDING',
           accessType: parsedAccessType,
           facultyAccess: facultyAccessData.length > 0 ? {
             create: facultyAccessData
@@ -101,6 +110,7 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
           department: { select: { name: true } },
           academicYear: { select: { year: true } },
           uploadedBy: { select: { name: true } },
+          facultyAccess: { select: { facultyId: true } }
         }
       });
 
@@ -117,14 +127,16 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
         uploadedBy: document.uploadedBy.name,
         isStarred: false,
         filename: document.name,
-        cloudinaryUrl: document.cloudinaryUrl
+        cloudinaryUrl: document.cloudinaryUrl,
+        accessType: document.accessType,
+        facultyAccess: document.facultyAccess
       };
 
       res.status(201).json({ success: true, document: serializedDoc });
 
       // Create Audit Log
       if (req.user) {
-        await createAuditLog(req.user.id, "UPLOAD_DOCUMENT", name, domain);
+        await createAuditLog(req.user.id, "UPLOAD_DOCUMENT", sanitizedFileName, domain);
       }
     } catch (dbError) {
       // Rollback Cloudinary if DB fails
@@ -166,6 +178,19 @@ export const getDocuments = async (req: AuthRequest, res: Response) => {
     // 1. Trash vs Active
     where.isDeleted = isDeleted === 'true';
 
+    // 1.2 Status
+    let queryStatus = status as string;
+    if (!queryStatus && isDeleted !== 'true') {
+      queryStatus = 'APPROVED';
+    }
+    if (queryStatus) {
+      if (queryStatus.includes(',')) {
+        where.status = { in: queryStatus.split(',') };
+      } else {
+        where.status = queryStatus;
+      }
+    }
+
     // 1.5. Starred
     if (isStarred === 'true') {
       where.starredByUsers = { some: { userId } };
@@ -189,21 +214,11 @@ export const getDocuments = async (req: AuthRequest, res: Response) => {
         where.uploadedBy = { name: faculty as string };
       }
     } else {
-      // Faculty logic
       const facultyAuthConditions: any[] = [
-        { uploadedById: userId }
+        { uploadedById: userId },
+        { accessType: 'ALL_FACULTY' },
+        { facultyAccess: { some: { facultyId: userId } } }
       ];
-
-      const userAdminId = (req.user as any)?.adminId;
-      if (userAdminId) {
-        facultyAuthConditions.push({
-          uploadedById: userAdminId,
-          OR: [
-            { accessType: 'ALL_FACULTY' },
-            { facultyAccess: { some: { facultyId: userId } } }
-          ]
-        });
-      }
 
       where.AND = [
         { OR: facultyAuthConditions }
@@ -238,12 +253,15 @@ export const getDocuments = async (req: AuthRequest, res: Response) => {
           sizeBytes: true,
           createdAt: true,
           cloudinaryUrl: true,
+          status: true,
           domain: { select: { name: true } },
           department: { select: { name: true } },
           academicYear: { select: { year: true } },
           uploadedBy: { select: { name: true } },
           uploadedById: true,
-          starredByUsers: { select: { userId: true }, where: { userId } }
+          starredByUsers: { select: { userId: true }, where: { userId } },
+          accessType: true,
+          facultyAccess: { select: { facultyId: true } }
         },
         orderBy
       }),
@@ -264,8 +282,11 @@ export const getDocuments = async (req: AuthRequest, res: Response) => {
       uploadedBy: doc.uploadedBy.name,
       uploadedById: doc.uploadedById,
       isStarred: doc.starredByUsers.length > 0,
+      status: doc.status,
       filename: doc.name,
-      cloudinaryUrl: doc.cloudinaryUrl
+      cloudinaryUrl: doc.cloudinaryUrl,
+      accessType: doc.accessType,
+      facultyAccess: doc.facultyAccess
     }));
 
     res.status(200).json({ 
@@ -291,7 +312,7 @@ export const getDocumentById = async (req: AuthRequest, res: Response) => {
       include: {
         domain: true,
         department: true,
-        uploadedBy: { select: { id: true, name: true, adminId: true } },
+        uploadedBy: { select: { id: true, name: true, adminId: true, role: true } },
         facultyAccess: { where: { facultyId: req.user?.id } }
       }
     });
@@ -302,13 +323,12 @@ export const getDocumentById = async (req: AuthRequest, res: Response) => {
 
     if (req.user?.role?.toUpperCase() !== 'ADMIN') {
       const isOwner = document.uploadedById === req.user?.id;
-      const isAdminOwner = document.uploadedById === (req.user as any)?.adminId;
-      const hasAdminAccess = isAdminOwner && (
+      const hasAccess = (
         document.accessType === 'ALL_FACULTY' || 
         (document.accessType === 'SELECT_FACULTY' && document.facultyAccess.length > 0)
       );
 
-      if (!isOwner && !hasAdminAccess) {
+      if (!isOwner && !hasAccess) {
         return res.status(403).json({ success: false, message: "Forbidden" });
       }
     }
@@ -336,7 +356,7 @@ export const toggleStar = async (req: AuthRequest, res: Response) => {
       where: { id: documentId }, 
       include: { 
         domain: true, 
-        uploadedBy: { select: { id: true, adminId: true } },
+        uploadedBy: { select: { id: true, adminId: true, role: true } },
         facultyAccess: { where: { facultyId: userId } }
       } 
     });
@@ -346,13 +366,12 @@ export const toggleStar = async (req: AuthRequest, res: Response) => {
 
     if (req.user.role?.toUpperCase() !== 'ADMIN') {
       const isOwner = doc.uploadedById === userId;
-      const isAdminOwner = doc.uploadedById === (req.user as any)?.adminId;
-      const hasAdminAccess = isAdminOwner && (
+      const hasAccess = (
         doc.accessType === 'ALL_FACULTY' || 
         (doc.accessType === 'SELECT_FACULTY' && doc.facultyAccess.length > 0)
       );
 
-      if (!isOwner && !hasAdminAccess) {
+      if (!isOwner && !hasAccess) {
         return res.status(403).json({ success: false, message: "Forbidden" });
       }
     }
@@ -400,7 +419,7 @@ export const viewDocument = async (req: AuthRequest, res: Response) => {
     const document = await prisma.document.findUnique({ 
       where: { id: documentId },
       include: { 
-        uploadedBy: { select: { id: true, adminId: true } },
+        uploadedBy: { select: { id: true, adminId: true, role: true } },
         facultyAccess: { where: { facultyId: req.user?.id } }
       }
     });
@@ -411,13 +430,12 @@ export const viewDocument = async (req: AuthRequest, res: Response) => {
 
     if (req.user?.role?.toUpperCase() !== 'ADMIN') {
       const isOwner = document.uploadedById === req.user?.id;
-      const isAdminOwner = document.uploadedById === (req.user as any)?.adminId;
-      const hasAdminAccess = isAdminOwner && (
+      const hasAccess = (
         document.accessType === 'ALL_FACULTY' || 
         (document.accessType === 'SELECT_FACULTY' && document.facultyAccess.length > 0)
       );
 
-      if (!isOwner && !hasAdminAccess) {
+      if (!isOwner && !hasAccess) {
         return res.status(403).json({ success: false, message: "Forbidden" });
       }
     }
@@ -771,5 +789,157 @@ export const cleanupExpiredDocuments = async (req: AuthRequest, res: Response) =
   } catch (error) {
     console.error("Cleanup error:", error);
     res.status(500).json({ success: false, message: "Failed to run cleanup" });
+  }
+};
+
+export const approveDocument = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user || req.user.role?.toUpperCase() !== 'ADMIN') {
+      return res.status(403).json({ success: false, message: "Forbidden" });
+    }
+    const document = await prisma.document.findUnique({ where: { id: req.params.id }, include: { domain: true } });
+    if (!document || document.isDeleted) return res.status(404).json({ success: false, message: "Not found" });
+    if (document.status !== 'PENDING') return res.status(400).json({ success: false, message: "Document is not pending" });
+
+    const updated = await prisma.document.update({
+      where: { id: document.id },
+      data: {
+        status: 'APPROVED',
+        approvedById: req.user.id,
+        approvedAt: new Date(),
+        rejectedById: null,
+        rejectedAt: null,
+        rejectionReason: null
+      }
+    });
+    await createAuditLog(req.user.id, "APPROVE_DOCUMENT", document.name, document.domain.name);
+    const serialized = { ...updated, sizeBytes: updated.sizeBytes ? updated.sizeBytes.toString() : null };
+    res.status(200).json({ success: true, document: serialized });
+  } catch (error) {
+    console.error("Approve error:", error);
+    res.status(500).json({ success: false, message: "Failed to approve document" });
+  }
+};
+
+export const declineDocument = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user || req.user.role?.toUpperCase() !== 'ADMIN') {
+      return res.status(403).json({ success: false, message: "Forbidden" });
+    }
+    const { reason } = req.body || {};
+    const document = await prisma.document.findUnique({ where: { id: req.params.id }, include: { domain: true } });
+    if (!document || document.isDeleted) return res.status(404).json({ success: false, message: "Not found" });
+    if (document.status !== 'PENDING') return res.status(400).json({ success: false, message: "Document is not pending" });
+
+    const updated = await prisma.document.update({
+      where: { id: document.id },
+      data: {
+        status: 'REJECTED',
+        rejectedById: req.user.id,
+        rejectedAt: new Date(),
+        rejectionReason: reason || null,
+        approvedById: null,
+        approvedAt: null
+      }
+    });
+    await createAuditLog(req.user.id, "REJECT_DOCUMENT", document.name, document.domain.name);
+    const serialized = { ...updated, sizeBytes: updated.sizeBytes ? updated.sizeBytes.toString() : null };
+    res.status(200).json({ success: true, document: serialized });
+  } catch (error) {
+    console.error("Decline error:", error);
+    res.status(500).json({ success: false, message: "Failed to decline document" });
+  }
+};
+
+export const updateDocumentAccess = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user || req.user.role?.toUpperCase() !== 'ADMIN') {
+      return res.status(403).json({ success: false, message: "Forbidden: Only Admin can change access" });
+    }
+
+    const { id } = req.params;
+    const { accessType, selectedFacultyIds } = req.body;
+
+    if (!['NONE', 'ALL_FACULTY', 'SELECT_FACULTY'].includes(accessType)) {
+      return res.status(400).json({ success: false, message: "Invalid accessType" });
+    }
+
+    const document = await prisma.document.findUnique({
+      where: { id },
+      include: { domain: true, facultyAccess: true }
+    });
+
+    if (!document || document.isDeleted) {
+      return res.status(404).json({ success: false, message: "Document not found" });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.documentFacultyAccess.deleteMany({
+        where: { documentId: id }
+      });
+
+      let facultyAccessData: { facultyId: string }[] = [];
+      if (accessType === 'SELECT_FACULTY' && Array.isArray(selectedFacultyIds) && selectedFacultyIds.length > 0) {
+        const validFaculties = await tx.user.findMany({
+          where: {
+            id: { in: selectedFacultyIds },
+            role: 'FACULTY',
+            status: 'Active'
+          },
+          select: { id: true }
+        });
+        facultyAccessData = validFaculties.map(f => ({ facultyId: f.id }));
+      }
+
+      await tx.document.update({
+        where: { id },
+        data: {
+          accessType,
+          facultyAccess: facultyAccessData.length > 0 ? {
+            create: facultyAccessData
+          } : undefined
+        }
+      });
+    });
+
+    await createAuditLog(req.user.id, "UPDATE_DOCUMENT_ACCESS", document.name, document.domain.name);
+    
+    // Fetch updated document to return
+    const updatedDocument = await prisma.document.findUnique({
+      where: { id },
+      include: {
+        domain: true,
+        academicYear: true,
+        department: true,
+        uploadedBy: { select: { name: true, email: true, avatar: true } },
+        facultyAccess: true
+      }
+    });
+
+    if (updatedDocument) {
+      const serializedDoc = {
+        id: updatedDocument.id,
+        name: updatedDocument.name,
+        type: updatedDocument.type,
+        size: updatedDocument.sizeBytes ? `${(Number(updatedDocument.sizeBytes) / (1024 * 1024)).toFixed(2)} MB` : "Unknown",
+        date: updatedDocument.createdAt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+        time: updatedDocument.createdAt.toLocaleTimeString("en-US", { hour: '2-digit', minute: '2-digit' }),
+        domain: updatedDocument.domain.name,
+        department: updatedDocument.department?.name,
+        year: updatedDocument.academicYear?.year,
+        uploadedBy: updatedDocument.uploadedBy.name,
+        isStarred: false, // The frontend handles starring separately
+        filename: updatedDocument.name,
+        cloudinaryUrl: updatedDocument.cloudinaryUrl,
+        accessType: updatedDocument.accessType,
+        facultyAccess: updatedDocument.facultyAccess
+      };
+      res.status(200).json({ success: true, message: "Document access updated successfully", document: serializedDoc });
+    } else {
+      res.status(200).json({ success: true, message: "Document access updated successfully" });
+    }
+  } catch (error) {
+    console.error("Update Document Access Error:", error);
+    res.status(500).json({ success: false, message: "Failed to update document access" });
   }
 };
