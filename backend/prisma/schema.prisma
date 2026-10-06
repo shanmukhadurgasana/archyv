@@ -71,8 +71,8 @@ model Document {
   name                             String
   type                             DocumentType
   sizeBytes                        BigInt?
-  cloudinaryUrl                    String?
-  cloudinaryPublicId               String?
+  googleDriveFileId                String?
+  mimeType                         String?
   status                           DocumentStatus    @default(PENDING)
   uploadedById                     String
   departmentId                     String?

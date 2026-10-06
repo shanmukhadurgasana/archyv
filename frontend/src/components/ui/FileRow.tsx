@@ -27,7 +27,7 @@ export default function FileRow({ file, showActions = true, isTrash = false }: F
   const handleOpenFile = async () => {
     // Both mocked and real documents can be requested through the proxy endpoint.
     // If the backend fails to load the mock file it will error gracefully, but 
-    // for Cloudinary docs, this properly delegates securely to backend.
+    // for Google Drive docs, this properly delegates securely to backend.
     const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
     window.open(`${baseUrl}/documents/${file.id}/view`, "_blank");
   };

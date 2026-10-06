@@ -177,7 +177,7 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
   }
 };
 
-import { uploadFile } from "../services/cloudinary.service";
+import { uploadFileToDrive } from "../services/googleDrive.service";
 
 export const updateUserAvatar = async (req: AuthRequest, res: Response) => {
   try {
@@ -191,11 +191,13 @@ export const updateUserAvatar = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    const uploadResult = await uploadFile(req.file.buffer, req.file.originalname);
+    const uploadResult = await uploadFileToDrive(req.file.buffer, req.file.originalname, req.file.mimetype);
+
+    const proxyUrl = `/api/users/${id}/avatar`;
 
     const updatedUser = await prisma.user.update({
       where: { id },
-      data: { avatar: uploadResult.secure_url },
+      data: { avatar: uploadResult.fileId },
       include: { department: true }
     });
 
@@ -207,7 +209,7 @@ export const updateUserAvatar = async (req: AuthRequest, res: Response) => {
       role: updatedUser.role.toLowerCase(),
       phone: updatedUser.phone,
       department: updatedUser.department?.name,
-      avatar: updatedUser.avatar,
+      avatar: updatedUser.avatar ? `/api/users/${updatedUser.id}/avatar` : null,
       dateOfJoin: updatedUser.dateOfJoin ? updatedUser.dateOfJoin.toISOString().split("T")[0] : null,
       status: updatedUser.status
     };

@@ -11,9 +11,11 @@ export const env = {
   ADMIN_NAME: process.env.ADMIN_NAME,
   ADMIN_EMAIL: process.env.ADMIN_EMAIL,
   ADMIN_PASSWORD: process.env.ADMIN_PASSWORD,
-  CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME,
-  CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY,
-  CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,
+  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+  GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+  GOOGLE_REDIRECT_URI: process.env.GOOGLE_REDIRECT_URI || "http://localhost:5000/api/oauth/google/callback",
+  GOOGLE_REFRESH_TOKEN: process.env.GOOGLE_REFRESH_TOKEN,
+  GOOGLE_DRIVE_FOLDER_ID: process.env.GOOGLE_DRIVE_FOLDER_ID,
   WEBAUTHN_RP_NAME: process.env.WEBAUTHN_RP_NAME || "Archyv Platform",
   WEBAUTHN_RP_ID: process.env.WEBAUTHN_RP_ID || "localhost",
   WEBAUTHN_ORIGIN: process.env.WEBAUTHN_ORIGIN || "http://localhost:3000",
@@ -23,6 +25,6 @@ if (!env.DATABASE_URL) {
   console.warn("⚠️  DATABASE_URL is missing from environment variables.");
 }
 
-if (!env.CLOUDINARY_CLOUD_NAME || !env.CLOUDINARY_API_KEY || !env.CLOUDINARY_API_SECRET) {
-  console.warn("⚠️  Cloudinary configuration is missing from environment variables.");
+if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.GOOGLE_REFRESH_TOKEN || !env.GOOGLE_DRIVE_FOLDER_ID) {
+  console.warn("⚠️  Google Drive configuration is missing from environment variables.");
 }

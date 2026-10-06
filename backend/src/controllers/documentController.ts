@@ -2,7 +2,7 @@ import { Response } from "express";
 import { DocumentType, DocumentAccess } from "@prisma/client";
 import { env } from "../config/env";
 import { AuthRequest } from "../middleware/auth";
-import { uploadFile, deleteFile } from "../services/cloudinary.service";
+import { uploadFileToDrive, deleteFileFromDrive, getFileStreamFromDrive } from "../services/googleDrive.service";
 import { createAuditLog } from "../services/audit.service";
 import { prisma } from "../lib/prisma";
 
@@ -56,8 +56,8 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
     else if (ext === "docx") type = "DOCX";
     else if (ext === "xlsx") type = "XLSX";
 
-    // 1. Upload to Cloudinary
-    const uploadResult = await uploadFile(req.file.buffer, sanitizedFileName);
+    // 1. Upload to Google Drive
+    const uploadResult = await uploadFileToDrive(req.file.buffer, sanitizedFileName, req.file.mimetype);
     
     let parsedAccessType: DocumentAccess = "NONE";
     if (accessType === "ALL_FACULTY") parsedAccessType = "ALL_FACULTY";
@@ -90,8 +90,8 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
           name: sanitizedFileName,
           type,
           sizeBytes: BigInt(req.file.size),
-          cloudinaryUrl: uploadResult.secure_url,
-          cloudinaryPublicId: uploadResult.public_id,
+          googleDriveFileId: uploadResult.fileId,
+          mimeType: uploadResult.mimeType,
           uploadedById: req.user.id,
           domainId: domainRecord.id,
           departmentId,
@@ -127,7 +127,7 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
         uploadedBy: document.uploadedBy.name,
         isStarred: false,
         filename: document.name,
-        cloudinaryUrl: document.cloudinaryUrl,
+        // cloudinaryUrl is no longer returned; removing it or leaving it omitted is fine.
         accessType: document.accessType,
         facultyAccess: document.facultyAccess
       };
@@ -139,9 +139,11 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
         await createAuditLog(req.user.id, "UPLOAD_DOCUMENT", sanitizedFileName, domain);
       }
     } catch (dbError) {
-      // Rollback Cloudinary if DB fails
-      console.error("Database creation failed, rolling back Cloudinary upload...");
-      await deleteFile(uploadResult.public_id).catch(e => console.error("Rollback failed:", e));
+      // Rollback Google Drive if DB fails
+      console.error("Database creation failed, rolling back Google Drive upload...");
+      if (uploadResult.fileId) {
+        await deleteFileFromDrive(uploadResult.fileId).catch(e => console.error("Rollback failed:", e));
+      }
       throw dbError;
     }
 
@@ -252,7 +254,6 @@ export const getDocuments = async (req: AuthRequest, res: Response) => {
           type: true,
           sizeBytes: true,
           createdAt: true,
-          cloudinaryUrl: true,
           status: true,
           domain: { select: { name: true } },
           department: { select: { name: true } },
@@ -284,7 +285,6 @@ export const getDocuments = async (req: AuthRequest, res: Response) => {
       isStarred: doc.starredByUsers.length > 0,
       status: doc.status,
       filename: doc.name,
-      cloudinaryUrl: doc.cloudinaryUrl,
       accessType: doc.accessType,
       facultyAccess: doc.facultyAccess
     }));
@@ -407,12 +407,6 @@ export const toggleStar = async (req: AuthRequest, res: Response) => {
   }
 };
 
-import { v2 as cloudinary } from "cloudinary";
-
-
-
-import https from "https";
-
 export const viewDocument = async (req: AuthRequest, res: Response) => {
   try {
     const documentId = req.params.id;
@@ -441,56 +435,34 @@ export const viewDocument = async (req: AuthRequest, res: Response) => {
     }
     // Admins have global access, so no else block needed
 
-    const publicId = document.cloudinaryPublicId;
-    let url = document.cloudinaryUrl;
+    const fileId = document.googleDriveFileId;
 
-    if (typeof publicId === 'string') {
-      if (document.type === 'PDF') {
-        // Bypass Cloudinary's free tier inline PDF block by requesting as an attachment
-        // and then proxying it via Express with inline headers so the browser's PDF viewer renders it.
-        url = cloudinary.url(publicId + '.pdf', {
-          sign_url: true,
-          secure: true,
-          resource_type: 'image',
-          flags: 'attachment'
-        });
+    if (!fileId) {
+      return res.status(404).json({ success: false, message: "File ID not found" });
+    }
 
-        // Proxy the PDF stream to the client
-        return https.get(url, (cloudinaryRes) => {
-          if (cloudinaryRes.statusCode !== 200) {
-            console.error(`Failed to fetch PDF from Cloudinary: Status ${cloudinaryRes.statusCode}`);
-            return res.status(cloudinaryRes.statusCode || 500).send('Failed to fetch document');
-          }
-          
-          res.setHeader('Content-Type', 'application/pdf');
-          res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(document.name)}"`);
-          
-          // Forward content length if available
-          if (cloudinaryRes.headers['content-length']) {
-            res.setHeader('Content-Length', cloudinaryRes.headers['content-length']);
-          }
-
-          cloudinaryRes.pipe(res);
-        }).on('error', (err) => {
-          console.error("Error proxying document from Cloudinary:", err);
-          res.status(500).send('Error retrieving document');
-        });
-      } else {
-        // Other files like DOCX, XLSX, etc., or images
-        url = cloudinary.url(publicId, {
-          sign_url: true,
-          secure: true,
-          resource_type: 'image'
-        });
-        return res.redirect(url);
+    const stream = await getFileStreamFromDrive(fileId);
+    
+    // Set appropriate headers based on document type
+    const mimeType = document.mimeType || 'application/octet-stream';
+    res.setHeader('Content-Type', mimeType);
+    
+    // For PDFs and images we want inline viewing, otherwise attachment
+    if (document.type === 'PDF' || mimeType.startsWith('image/')) {
+      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(document.name)}"`);
+    } else {
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(document.name)}"`);
+    }
+    
+    // Pipe the stream to the response
+    stream.pipe(res);
+    
+    stream.on('error', (err: any) => {
+      console.error("Error piping Google Drive stream:", err);
+      if (!res.headersSent) {
+        res.status(500).send('Error retrieving document');
       }
-    }
-
-    if (!url) {
-      return res.status(404).json({ success: false, message: "URL not found" });
-    }
-
-    return res.redirect(url);
+    });
   } catch (error) {
     console.error("View document error:", error);
     res.status(500).json({ success: false, message: "Failed to view document" });
@@ -569,7 +541,6 @@ export const getTrashedDocuments = async (req: AuthRequest, res: Response) => {
         type: true,
         sizeBytes: true,
         createdAt: true,
-        cloudinaryUrl: true,
         deletedAt: true,
         retentionUntil: true,
         domain: { select: { name: true } },
@@ -599,7 +570,6 @@ export const getTrashedDocuments = async (req: AuthRequest, res: Response) => {
         uploadedBy: doc.uploadedBy.name,
         isStarred: doc.starredByUsers.length > 0,
         filename: doc.name,
-        cloudinaryUrl: doc.cloudinaryUrl,
         isDeleted: true,
         deletedDate: doc.deletedAt?.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
         daysLeft
@@ -692,16 +662,16 @@ export const permanentDeleteDocument = async (req: AuthRequest, res: Response) =
       return res.status(403).json({ success: false, message: "Forbidden" });
     }
 
-    if (document.cloudinaryPublicId) {
+    if (document.googleDriveFileId) {
       try {
-        const { success } = await deleteFile(document.cloudinaryPublicId);
+        const { success } = await deleteFileFromDrive(document.googleDriveFileId);
         if (!success) {
-          console.error("Cloudinary deletion returned false, aborting DB deletion for:", document.id);
-          return res.status(500).json({ success: false, message: "Failed to delete from Cloudinary" });
+          console.error("Google Drive deletion returned false, aborting DB deletion for:", document.id);
+          return res.status(500).json({ success: false, message: "Failed to delete from Google Drive" });
         }
       } catch (cldError) {
-        console.error("Cloudinary deletion failed with error, aborting DB deletion:", cldError);
-        return res.status(500).json({ success: false, message: "Failed to delete from Cloudinary" });
+        console.error("Google Drive deletion failed with error, aborting DB deletion:", cldError);
+        return res.status(500).json({ success: false, message: "Failed to delete from Google Drive" });
       }
     }
 
@@ -735,11 +705,11 @@ export const runCleanupJobCore = async () => {
     for (const doc of expiredDocs) {
       try {
         let canDeleteDb = true;
-        if (doc.cloudinaryPublicId) {
-          const { success } = await deleteFile(doc.cloudinaryPublicId);
+        if (doc.googleDriveFileId) {
+          const { success } = await deleteFileFromDrive(doc.googleDriveFileId);
           if (!success) {
             canDeleteDb = false;
-            console.error(`Cloudinary deletion returned false, skipping DB deletion for ${doc.id}`);
+            console.error(`Google Drive deletion returned false, skipping DB deletion for ${doc.id}`);
           }
         }
         if (canDeleteDb) {
@@ -930,7 +900,6 @@ export const updateDocumentAccess = async (req: AuthRequest, res: Response) => {
         uploadedBy: updatedDocument.uploadedBy.name,
         isStarred: false, // The frontend handles starring separately
         filename: updatedDocument.name,
-        cloudinaryUrl: updatedDocument.cloudinaryUrl,
         accessType: updatedDocument.accessType,
         facultyAccess: updatedDocument.facultyAccess
       };

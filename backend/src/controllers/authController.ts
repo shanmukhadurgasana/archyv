@@ -210,7 +210,7 @@ export const getCurrentUser = async (req: AuthRequest, res: Response) => {
   }
 };
 
-import { uploadFile, deleteFile } from "../services/cloudinary.service";
+import { uploadFileToDrive, deleteFileFromDrive } from "../services/googleDrive.service";
 
 export const updateAvatar = async (req: AuthRequest, res: Response) => {
   try {
@@ -218,11 +218,15 @@ export const updateAvatar = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: "No user or file provided" });
     }
 
-    const uploadResult = await uploadFile(req.file.buffer, req.file.originalname);
+    const uploadResult = await uploadFileToDrive(req.file.buffer, req.file.originalname, req.file.mimetype);
     
+    // Store the fileId as the avatar string. We will proxy it via an endpoint.
+    // Wait, the frontend uses <img src={user.avatar} />. So we should store the proxy URL.
+    const proxyUrl = `/api/users/${req.user.id}/avatar`;
+
     const updatedUser = await prisma.user.update({
       where: { id: req.user.id },
-      data: { avatar: uploadResult.secure_url },
+      data: { avatar: uploadResult.fileId },
       select: {
         id: true,
         name: true,
@@ -241,6 +245,7 @@ export const updateAvatar = async (req: AuthRequest, res: Response) => {
 
     const mappedUser = {
       ...updatedUser,
+      avatar: updatedUser.avatar ? `/api/users/${updatedUser.id}/avatar` : null,
       department: updatedUser.department?.name,
       dateOfJoin: updatedUser.dateOfJoin ? updatedUser.dateOfJoin.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "N/A",
       lastLogin: updatedUser.lastLogin ? updatedUser.lastLogin.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: '2-digit', minute: '2-digit' }) : "Never",
@@ -262,27 +267,17 @@ export const deleteAvatar = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: "No avatar to delete" });
     }
 
-    const urlParts = user.avatar.split('/');
-    const uploadIndex = urlParts.indexOf('upload');
-    if (uploadIndex !== -1) {
-      let publicIdParts = urlParts.slice(uploadIndex + 1);
-      if (publicIdParts[0].startsWith('v')) {
-        publicIdParts = publicIdParts.slice(1);
-      }
-      let publicId = publicIdParts.join('/');
-      const lastDotIndex = publicId.lastIndexOf('.');
-      if (lastDotIndex !== -1) {
-        publicId = publicId.substring(0, lastDotIndex);
-      }
-      
+    // For Google Drive, the avatar field contains the fileId directly.
+    const fileId = user.avatar;
+    if (fileId && !fileId.startsWith('http')) {
       try {
-        const { success } = await deleteFile(publicId, "image");
+        const { success } = await deleteFileFromDrive(fileId);
         if (!success) {
-          return res.status(500).json({ success: false, message: "Failed to delete from Cloudinary" });
+          return res.status(500).json({ success: false, message: "Failed to delete from Google Drive" });
         }
-      } catch (cldError) {
-        console.error("Cloudinary deletion failed:", cldError);
-        return res.status(500).json({ success: false, message: "Failed to delete from Cloudinary" });
+      } catch (err) {
+        console.error("Google Drive deletion failed:", err);
+        return res.status(500).json({ success: false, message: "Failed to delete from Google Drive" });
       }
     }
 
