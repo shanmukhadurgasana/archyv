@@ -56,6 +56,20 @@ model Domain {
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
   documents Document[]
+  subdomains Subdomain[]
+}
+
+model Subdomain {
+  id        String     @id @default(uuid())
+  name      String
+  domainId  String
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  domain    Domain     @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  documents Document[]
+
+  @@unique([name, domainId])
+  @@index([domainId])
 }
 
 model AcademicYear {
@@ -77,6 +91,7 @@ model Document {
   uploadedById                     String
   departmentId                     String?
   domainId                         String
+  subdomainId                      String?
   academicYearId                   String?
   approvedById                     String?
   approvedAt                       DateTime?
@@ -95,6 +110,7 @@ model Document {
   User_Document_approvedByIdToUser User?             @relation("Document_approvedByIdToUser", fields: [approvedById], references: [id])
   department                       Department?       @relation(fields: [departmentId], references: [id])
   domain                           Domain            @relation(fields: [domainId], references: [id])
+  subdomain                        Subdomain?        @relation(fields: [subdomainId], references: [id])
   User_Document_rejectedByIdToUser User?             @relation("Document_rejectedByIdToUser", fields: [rejectedById], references: [id])
   uploadedBy                       User              @relation("UploadedBy", fields: [uploadedById], references: [id])
   starredByUsers                   StarredDocument[]

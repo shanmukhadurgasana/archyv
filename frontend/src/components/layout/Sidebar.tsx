@@ -115,7 +115,7 @@ export default function Sidebar({ role }: SidebarProps) {
     { label: "Documents", href: "/admin/documents", icon: FileText },
     { label: "Upload", href: "/admin/upload", icon: Upload },
     { label: "Audit Logs", href: "/admin/audit-logs", icon: List },
-    { label: "Domains & Years", href: "/admin/manage-options", icon: Settings },
+    { label: "Manage Data", href: "/admin/manage-options", icon: Settings },
   ];
 
   const accountNav = [

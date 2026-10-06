@@ -16,22 +16,24 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ success: false, message: "No file provided" });
     }
 
-    const { name: originalTitle, domain, department, academicYear, accessType, selectedFacultyIds, branch, semester, section } = req.body;
+    const { name: originalTitle, domain, subdomain, department, academicYear, accessType, selectedFacultyIds, branch, semester, section } = req.body;
 
     if (!domain || !academicYear || !branch || !semester || !section) {
       return res.status(400).json({ success: false, message: "Missing required fields for document naming" });
     }
 
     const originalExt = req.file.originalname.split(".").pop() || "";
-    const canonicalName = `${domain}.${academicYear}.${branch}.${semester}.${section}${originalExt ? "." + originalExt : ""}`;
+    const parts = [domain, subdomain, academicYear, branch, semester, section].filter(Boolean);
+    const canonicalName = `${parts.join(".")}${originalExt ? "." + originalExt : ""}`;
     const sanitizedFileName = canonicalName.replace(/[/\\]/g, "");
 
 
     // Lookup Foreign Keys Concurrently
-    const [domainRecord, deptRecord, yearRecord] = await Promise.all([
+    const [domainRecord, deptRecord, yearRecord, subdomainRecord] = await Promise.all([
       prisma.domain.findUnique({ where: { name: domain } }),
       department ? prisma.department.findUnique({ where: { name: department } }) : Promise.resolve(null),
-      academicYear ? prisma.academicYear.findUnique({ where: { year: academicYear } }) : Promise.resolve(null)
+      academicYear ? prisma.academicYear.findUnique({ where: { year: academicYear } }) : Promise.resolve(null),
+      subdomain ? prisma.subdomain.findFirst({ where: { name: subdomain, domain: { name: domain } } }) : Promise.resolve(null)
     ]);
 
     if (!domainRecord) {
@@ -94,6 +96,7 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
           mimeType: uploadResult.mimeType,
           uploadedById: req.user.id,
           domainId: domainRecord.id,
+          subdomainId: subdomainRecord?.id || null,
           departmentId,
           academicYearId,
           branch,

@@ -13,6 +13,7 @@ export default function FacultyUpload() {
   const [title, setTitle] = useState("");
   const [department, setDepartment] = useState("");
   const [domain, setDomain] = useState("");
+  const [subdomain, setSubdomain] = useState("");
   const [year, setYear] = useState("");
   const [branch, setBranch] = useState("");
   const [semester, setSemester] = useState("");
@@ -25,13 +26,24 @@ export default function FacultyUpload() {
     if (departments.length > 0 && !department) setDepartment(departments[0].name);
   }, [domains, academicYears, departments]);
 
+  const selectedDomainObj = domains.find(d => d.name === domain);
+  const subdomainOptions = selectedDomainObj?.subdomains?.map(s => s.name) || [];
+
+  useEffect(() => {
+    if (subdomainOptions.length > 0 && !subdomainOptions.includes(subdomain)) {
+      setSubdomain(subdomainOptions[0]);
+    } else if (subdomainOptions.length === 0 && subdomain !== "") {
+      setSubdomain("");
+    }
+  }, [domain, subdomainOptions, subdomain]);
+
   // Auto-generate title based on fields
   useEffect(() => {
-    const generatedTitle = [domain, year, branch, semester, section]
+    const generatedTitle = [domain, subdomain, year, branch, semester, section]
       .filter(Boolean)
       .join(".");
     setTitle(generatedTitle);
-  }, [domain, year, branch, semester, section]);
+  }, [domain, subdomain, year, branch, semester, section]);
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -83,6 +95,7 @@ export default function FacultyUpload() {
       formData.append("file", selectedFile);
       formData.append("name", title);
       formData.append("domain", domain);
+      if (subdomain) formData.append("subdomain", subdomain);
       formData.append("department", department);
       formData.append("academicYear", year);
       formData.append("branch", branch);
@@ -221,6 +234,18 @@ export default function FacultyUpload() {
                 fullWidth
               />
             </div>
+
+            {subdomainOptions.length > 0 && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-foreground">Subdomain</label>
+                <CustomDropdown
+                  value={subdomain}
+                  onChange={setSubdomain}
+                  options={subdomainOptions}
+                  fullWidth
+                />
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <label className="text-sm font-semibold text-foreground">Academic Year</label>

@@ -7,9 +7,16 @@ import {
 } from "@/lib/mock-data";
 import { deleteFile } from "@/lib/storage";
 
+export interface Subdomain {
+  id: string;
+  name: string;
+  domainId: string;
+}
+
 export interface Domain {
   id: string;
   name: string;
+  subdomains?: Subdomain[];
 }
 
 export interface AcademicYear {
