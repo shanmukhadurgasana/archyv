@@ -16,6 +16,7 @@ export interface Subdomain {
 export interface Domain {
   id: string;
   name: string;
+  isFaculty?: boolean;
   subdomains?: Subdomain[];
 }
 
@@ -24,9 +25,16 @@ export interface AcademicYear {
   year: string;
 }
 
+export interface Section {
+  id: string;
+  name: string;
+  departmentId: string;
+}
+
 export interface Department {
   id: string;
   name: string;
+  sections?: Section[];
 }
 
 export interface AuditLog {
@@ -65,6 +73,18 @@ interface AppContextType extends Omit<AppState, "currentUser"> {
   approveDocument: (id: string) => Promise<void>;
   declineDocument: (id: string) => Promise<void>;
   updateDocumentAccess: (id: string, accessType: string, selectedFacultyIds: string[]) => Promise<{ success: boolean, error?: string }>;
+  updateDocument: (id: string, updates: {
+    name?: string;
+    title?: string;
+    domain?: string;
+    subdomain?: string | null;
+    academicYear?: string | null;
+    branch?: string | null;
+    department?: string | null;
+    section?: string | null;
+    yearOfStudy?: string | null;
+    semester?: string | null;
+  }) => Promise<{ success: boolean; document?: Document; error?: string }>;
   toggleStar: (docId: string) => void;
   createFaculty: (user: any) => Promise<{ success: boolean; error?: string }>;
   deleteFaculty: (id: string) => Promise<void>;
@@ -85,15 +105,18 @@ interface AppContextType extends Omit<AppState, "currentUser"> {
   fetchAcademicYears: () => Promise<void>;
   fetchDepartments: () => Promise<void>;
   authStatus: "loading" | "authenticated" | "unauthenticated";
+  refreshData: () => Promise<void>;
+  isRefreshing: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  // Initialize state with mock data
+  // Initialize state with null/loading for identical SSR and client hydration
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authStatus, setAuthStatus] = useState<"loading" | "authenticated" | "unauthenticated">("loading");
   const [isDataLoading, setIsDataLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
 
   const [users, setUsers] = useState<User[]>([]);
@@ -128,17 +151,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const query = new URLSearchParams();
     if (globalSearchQuery) query.append("search", globalSearchQuery);
     if (!params) return query.toString();
-    
+
     if (params.search && params.search !== globalSearchQuery) query.set("search", params.search);
     if (params.page) query.append("page", params.page.toString());
     if (params.limit) query.append("limit", params.limit.toString());
     if (params.sortBy) query.append("sortBy", params.sortBy);
-    if (params.domain) query.append("domain", params.domain);
-    if (params.department) query.append("faculty", params.department);
+    if (params.domain && params.domain !== "All Domains") query.append("domain", params.domain);
+    if (params.subdomain && params.subdomain !== "All Sub Domains") query.append("subdomain", params.subdomain);
+    if (params.branch && params.branch !== "All Branches") query.append("branch", params.branch);
+    if (params.section && params.section !== "All Sections") query.append("section", params.section);
+    if (params.department && params.department !== "All Branch & Sections" && params.department !== "All Branches") query.append("department", params.department);
+    if (params.academicYear && params.academicYear !== "All Academic Years") query.append("academicYear", params.academicYear);
+    if (params.yearOfStudy && params.yearOfStudy !== "All Years of Study") query.append("yearOfStudy", params.yearOfStudy);
+    if (params.faculty && params.faculty !== "All Faculty") query.append("faculty", params.faculty);
     if (params.status) query.append("status", params.status);
     if (params.isDeleted) query.append("isDeleted", "true");
     if (params.isStarred) query.append("isStarred", "true");
-    
+
     return query.toString();
   };
 
@@ -235,10 +264,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const initializeData = async (user: User) => {
-    setIsDataLoading(true);
+    // Only show full loading spinner if we don't have documents loaded yet
+    if (documents.length === 0) {
+      setIsDataLoading(true);
+    }
     const isAdmin = user.role.toLowerCase() === 'admin';
-    
-    // Load critical data to stop loading state
+
+    // Load critical data
     await Promise.allSettled([
       fetchDocuments(),
       fetchTrashDocuments(),
@@ -257,13 +289,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const refreshData = async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      const activeUser = currentUser || (typeof window !== "undefined" && JSON.parse(localStorage.getItem("archyv_user") || "null"));
+      const isAdmin = activeUser?.role?.toLowerCase() === 'admin';
+
+      await Promise.allSettled([
+        fetchDocuments(),
+        fetchTrashDocuments(),
+        fetchPendingDocuments(),
+        fetchDomains(),
+        fetchAcademicYears(),
+        fetchDepartments(),
+        fetchDashboardStats(),
+        ...(isAdmin ? [fetchUsers(), fetchAuditLogs()] : []),
+        new Promise(resolve => setTimeout(resolve, 800)) // smooth rotation feedback
+      ]);
+    } catch (e) {
+      console.error("Refresh data failed:", e);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   const addDocument = (doc: Document) => {
     if (doc.status === 'PENDING' || doc.status === 'REJECTED') {
       setPendingDocuments(prev => [doc, ...prev]);
     } else {
       setDocuments(prev => [doc, ...prev]);
     }
-    
+
     // Update dashboard stats optimistically
     if (dashboardStats) {
       setDashboardStats((prev: any) => ({
@@ -284,7 +341,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [documents, currentUser]);
 
-  
+
   const fetchDashboardStats = async () => {
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/dashboard/stats`, {
@@ -339,6 +396,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return { require2FA: true, tempToken: data.tempToken };
         }
         setCurrentUser(data.user);
+        try { localStorage.setItem("archyv_user", JSON.stringify(data.user)); } catch (e) {}
         setAuthStatus("authenticated");
         initializeData(data.user);
         return true;
@@ -362,6 +420,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (response.ok) {
         const data = await response.json();
         setCurrentUser(data.user);
+        try { localStorage.setItem("archyv_user", JSON.stringify(data.user)); } catch (e) {}
         setAuthStatus("authenticated");
         initializeData(data.user);
         return true;
@@ -408,9 +467,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       const data = await verifyRes.json();
       setCurrentUser(data.user);
+      try { localStorage.setItem("archyv_user", JSON.stringify(data.user)); } catch (e) {}
       setAuthStatus("authenticated");
       initializeData(data.user);
-      
+
       return { success: true, role: data.user.role };
     } catch (e: any) {
       console.error("Passkey login failed:", e);
@@ -425,8 +485,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         credentials: "include",
       });
       if (currentUser) {
-        }
+      }
       setCurrentUser(null);
+      try { localStorage.removeItem("archyv_user"); } catch (e) {}
       setAuthStatus("unauthenticated");
     } catch (e) {
       console.error("Logout failed:", e);
@@ -435,15 +496,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const deleteDocument = async (id: string) => {
     if (currentUser?.role.toLowerCase() !== "admin") return;
-    
+
     // Grab the document before it's deleted to move it to trash optimistically
     const docToDelete = documents.find(d => d.id === id) || pendingDocuments.find(d => d.id === id);
     if (!docToDelete) return;
-    
+
     // Optimistic Update
     setDocuments(prev => prev.filter(d => d.id !== id));
     setPendingDocuments(prev => prev.filter(d => d.id !== id));
-    
+
     const trashedDoc = {
       ...docToDelete,
       isDeleted: true,
@@ -451,14 +512,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       daysLeft: 90
     };
     setTrashDocuments(prev => [trashedDoc, ...prev]);
-    
+
     if (dashboardStats) {
-        setDashboardStats((prev: any) => ({
-            ...prev,
-            trashDocuments: prev.trashDocuments + 1,
-            totalDocuments: docToDelete.status === 'APPROVED' ? Math.max(0, prev.totalDocuments - 1) : prev.totalDocuments,
-            pendingDocuments: docToDelete.status === 'PENDING' ? Math.max(0, prev.pendingDocuments - 1) : prev.pendingDocuments,
-        }));
+      setDashboardStats((prev: any) => ({
+        ...prev,
+        trashDocuments: prev.trashDocuments + 1,
+        totalDocuments: docToDelete.status === 'APPROVED' ? Math.max(0, prev.totalDocuments - 1) : prev.totalDocuments,
+        pendingDocuments: docToDelete.status === 'PENDING' ? Math.max(0, prev.pendingDocuments - 1) : prev.pendingDocuments,
+      }));
     }
 
     try {
@@ -479,12 +540,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       setTrashDocuments(prev => prev.filter(d => d.id !== id));
       if (dashboardStats) {
-          setDashboardStats((prev: any) => ({
-              ...prev,
-              trashDocuments: Math.max(0, prev.trashDocuments - 1),
-              totalDocuments: docToDelete.status === 'APPROVED' ? prev.totalDocuments + 1 : prev.totalDocuments,
-              pendingDocuments: docToDelete.status === 'PENDING' ? prev.pendingDocuments + 1 : prev.pendingDocuments,
-          }));
+        setDashboardStats((prev: any) => ({
+          ...prev,
+          trashDocuments: Math.max(0, prev.trashDocuments - 1),
+          totalDocuments: docToDelete.status === 'APPROVED' ? prev.totalDocuments + 1 : prev.totalDocuments,
+          pendingDocuments: docToDelete.status === 'PENDING' ? prev.pendingDocuments + 1 : prev.pendingDocuments,
+        }));
       }
       alert("Error deleting document. Reverted changes.");
     }
@@ -492,30 +553,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const restoreDocument = async (id: string) => {
     if (currentUser?.role.toLowerCase() !== "admin") return;
-    
+
     const docToRestore = trashDocuments.find(d => d.id === id);
     if (!docToRestore) return;
 
     // Optimistic Update
     setTrashDocuments(prev => prev.filter(d => d.id !== id));
-    
+
     const restoredDoc = { ...docToRestore, isDeleted: false };
     delete restoredDoc.deletedDate;
     delete restoredDoc.daysLeft;
-    
+
     if (restoredDoc.status === 'PENDING' || restoredDoc.status === 'REJECTED') {
       setPendingDocuments(prev => [restoredDoc, ...prev]);
     } else {
       setDocuments(prev => [restoredDoc, ...prev]);
     }
-    
+
     if (dashboardStats) {
-        setDashboardStats((prev: any) => ({
-            ...prev,
-            trashDocuments: Math.max(0, prev.trashDocuments - 1),
-            totalDocuments: restoredDoc.status === 'APPROVED' ? prev.totalDocuments + 1 : prev.totalDocuments,
-            pendingDocuments: restoredDoc.status === 'PENDING' ? prev.pendingDocuments + 1 : prev.pendingDocuments,
-        }));
+      setDashboardStats((prev: any) => ({
+        ...prev,
+        trashDocuments: Math.max(0, prev.trashDocuments - 1),
+        totalDocuments: restoredDoc.status === 'APPROVED' ? prev.totalDocuments + 1 : prev.totalDocuments,
+        pendingDocuments: restoredDoc.status === 'PENDING' ? prev.pendingDocuments + 1 : prev.pendingDocuments,
+      }));
     }
 
     try {
@@ -536,12 +597,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setDocuments(prev => prev.filter(d => d.id !== id));
       }
       if (dashboardStats) {
-          setDashboardStats((prev: any) => ({
-              ...prev,
-              trashDocuments: prev.trashDocuments + 1,
-              totalDocuments: restoredDoc.status === 'APPROVED' ? Math.max(0, prev.totalDocuments - 1) : prev.totalDocuments,
-              pendingDocuments: restoredDoc.status === 'PENDING' ? Math.max(0, prev.pendingDocuments - 1) : prev.pendingDocuments,
-          }));
+        setDashboardStats((prev: any) => ({
+          ...prev,
+          trashDocuments: prev.trashDocuments + 1,
+          totalDocuments: restoredDoc.status === 'APPROVED' ? Math.max(0, prev.totalDocuments - 1) : prev.totalDocuments,
+          pendingDocuments: restoredDoc.status === 'PENDING' ? Math.max(0, prev.pendingDocuments - 1) : prev.pendingDocuments,
+        }));
       }
       alert("Error restoring document. Reverted changes.");
     }
@@ -549,7 +610,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const permanentDeleteDocument = async (id: string) => {
     if (currentUser?.role.toLowerCase() !== "admin") return;
-    
+
     const docToPermanentlyDelete = trashDocuments.find(d => d.id === id);
     if (!docToPermanentlyDelete) return;
 
@@ -579,7 +640,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     setPendingDocuments(prev => prev.filter(d => d.id !== id));
     setDocuments(prev => [{ ...docToApprove, status: 'APPROVED' }, ...prev]);
-    
+
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/documents/${id}/approve`, {
         method: 'POST',
@@ -599,7 +660,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!docToDecline) return;
 
     setPendingDocuments(prev => prev.filter(d => d.id !== id));
-    
+
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/documents/${id}/reject`, {
         method: 'POST',
@@ -633,20 +694,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const updateDocument = async (id: string, updates: any) => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/documents/${id}`, {
+        method: 'PATCH',
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(updates)
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        if (data.document) {
+          setDocuments(prev => prev.map(d => d.id === id ? { ...d, ...data.document } : d));
+          setPendingDocuments(prev => prev.map(d => d.id === id ? { ...d, ...data.document } : d));
+        }
+        return { success: true, document: data.document };
+      }
+      return { success: false, error: data.message || "Failed to update document" };
+    } catch (e) {
+      console.error("Update document error:", e);
+      return { success: false, error: "Network error" };
+    }
+  };
+
   const toggleStar = async (docId: string) => {
     if (!currentUser) return;
-    
+
     const userStarred = starredDocs[currentUser.id] || [];
     const isCurrentlyStarred = userStarred.includes(docId);
-    
+
     // Optimistic UI update
     setStarredDocs(prev => ({
       ...prev,
-      [currentUser.id]: isCurrentlyStarred 
-        ? userStarred.filter(id => id !== docId) 
+      [currentUser.id]: isCurrentlyStarred
+        ? userStarred.filter(id => id !== docId)
         : [...userStarred, docId]
     }));
-    
+
     setDocuments(prev => prev.map(d => d.id === docId ? { ...d, isStarred: !isCurrentlyStarred } : d));
 
     try {
@@ -655,7 +739,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         method,
         credentials: "include",
       });
-      
+
       if (!response.ok) {
         throw new Error("Failed to toggle star");
       }
@@ -703,7 +787,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
       if (response.ok) {
         setUsers(prev => prev.filter(u => u.id !== id));
-        }
+      }
     } catch (e) {
       console.error("Failed to delete faculty:", e);
     }
@@ -720,7 +804,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (response.ok) {
         const data = await response.json();
         setUsers(prev => prev.map(u => u.id === id ? data.user : u));
-        }
+      }
     } catch (e) {
       console.error("Failed to update faculty:", e);
     }
@@ -728,7 +812,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const updateUserProfile = async (updates: Partial<User>) => {
     if (!currentUser) return;
-    
+
     // Only process profile updates (not avatar, as avatar has its own endpoint)
     if (Object.keys(updates).length > 0 && !updates.avatar) {
       try {
@@ -738,7 +822,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           credentials: 'include',
           body: JSON.stringify(updates)
         });
-        
+
         if (res.ok) {
           const data = await res.json();
           const updatedUser = data.user;
@@ -771,7 +855,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dashboardStats,
     paginationData,
     trashPaginationData,
-    fetchAuditLogs,auditLogs,
+    fetchAuditLogs, auditLogs,
     domains,
     fetchDomains,
     academicYears,
@@ -789,6 +873,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     approveDocument,
     declineDocument,
     updateDocumentAccess,
+    updateDocument,
     toggleStar,
     createFaculty,
     deleteFaculty,
@@ -798,11 +883,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setGlobalSearchQuery,
     authStatus,
     isDataLoading,
-    addDocument
+    addDocument,
+    refreshData,
+    isRefreshing
   };
 
   // Fetch user session on mount
   useEffect(() => {
+    try {
+      const stored = localStorage.getItem("archyv_user");
+      if (stored) {
+        const u = JSON.parse(stored);
+        setCurrentUser(u);
+        setAuthStatus("authenticated");
+        initializeData(u);
+      }
+    } catch (e) {}
+
     const fetchUser = async () => {
       try {
         const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/auth/me`, {
@@ -812,16 +909,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (response.ok) {
           const data = await response.json();
           setCurrentUser(data.user);
+          try { localStorage.setItem("archyv_user", JSON.stringify(data.user)); } catch (e) {}
           setAuthStatus("authenticated");
           initializeData(data.user);
         } else {
           setCurrentUser(null);
+          try { localStorage.removeItem("archyv_user"); } catch (e) {}
           setAuthStatus("unauthenticated");
         }
-      } catch (e) {
+      } catch (e: any) {
         console.warn("Failed to fetch current user session (server might be restarting)");
-        setCurrentUser(null);
-        setAuthStatus("unauthenticated");
+        if (e?.name !== "TypeError") {
+          setCurrentUser(null);
+          try { localStorage.removeItem("archyv_user"); } catch (err) {}
+          setAuthStatus("unauthenticated");
+        }
       }
     };
     fetchUser();

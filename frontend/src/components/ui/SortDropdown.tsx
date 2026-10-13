@@ -21,6 +21,7 @@ export default function SortDropdown({ value, onChange }: SortDropdownProps) {
       label="Sort by:"
       value={value}
       options={options}
+      disableSort={true}
       onChange={(val) => onChange(val as SortOption)}
     />
   );

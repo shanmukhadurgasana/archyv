@@ -3,16 +3,25 @@ import Image from "next/image";
 interface DomainCardProps {
   name: string;
   count: number;
+  isFaculty?: boolean;
 }
 
-export default function DomainCard({ name, count }: DomainCardProps) {
+export default function DomainCard({ name, count, isFaculty }: DomainCardProps) {
+  const showFacultyBadge = Boolean(isFaculty);
   return (
     <div className="bg-white border border-[var(--border)] rounded-2xl p-5 flex items-center gap-4 hover:shadow-sm transition-all cursor-pointer group">
       <div className="w-12 h-12 rounded-xl border border-[var(--border)] flex items-center justify-center bg-gray-50 group-hover:bg-[var(--archyv-accent)]/10 transition-colors p-2.5 relative">
         <Image src="/logo.png" alt="Domain" fill sizes="48px" className="object-contain p-2 opacity-80 group-hover:opacity-100 transition-opacity" />
       </div>
       <div>
-        <div className="text-sm font-semibold text-foreground mb-0.5">{name}</div>
+        <div className="text-sm font-semibold text-foreground mb-0.5 flex items-center gap-1.5">
+          <span className="truncate">{name}</span>
+          {showFacultyBadge && (
+            <span className="inline-flex items-center text-xs text-indigo-600 bg-indigo-50 border border-indigo-200/60 px-1.5 py-0.5 rounded-full" title="Faculty Domain">
+              👥
+            </span>
+          )}
+        </div>
         <div className="text-xl font-bold text-foreground">
           {count.toLocaleString()}
         </div>

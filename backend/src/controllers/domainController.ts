@@ -18,8 +18,8 @@ export const getDomains = async (req: AuthRequest, res: Response) => {
 
 export const createDomain = async (req: AuthRequest, res: Response) => {
   try {
-    const { name } = req.body;
-    
+    const { name, isFaculty } = req.body;
+
     if (!name || typeof name !== 'string') {
       return res.status(400).json({ success: false, message: "Domain name is required" });
     }
@@ -37,8 +37,13 @@ export const createDomain = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ success: false, message: "Domain already exists." });
     }
 
+    const facultyFlag = Boolean(isFaculty);
+
     const newDomain = await prisma.domain.create({
-      data: { name: sanitizedName }
+      data: {
+        name: sanitizedName,
+        isFaculty: facultyFlag
+      }
     });
 
     if (req.user) {
@@ -55,8 +60,8 @@ export const createDomain = async (req: AuthRequest, res: Response) => {
 export const updateDomain = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { name } = req.body;
-    
+    const { name, isFaculty } = req.body;
+
     if (!name || typeof name !== 'string') {
       return res.status(400).json({ success: false, message: "Domain name is required" });
     }
@@ -74,9 +79,14 @@ export const updateDomain = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ success: false, message: "Domain already exists." });
     }
 
+    const updateData: { name: string; isFaculty?: boolean } = { name: sanitizedName };
+    if (typeof isFaculty === 'boolean') {
+      updateData.isFaculty = isFaculty;
+    }
+
     const updatedDomain = await prisma.domain.update({
       where: { id },
-      data: { name: sanitizedName }
+      data: updateData
     });
 
     if (req.user) {
@@ -93,7 +103,7 @@ export const updateDomain = async (req: AuthRequest, res: Response) => {
 export const deleteDomain = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    
+
     const domain = await prisma.domain.findUnique({ where: { id } });
     if (!domain) {
       return res.status(404).json({ success: false, message: "Domain not found" });
@@ -121,7 +131,7 @@ export const createSubdomain = async (req: AuthRequest, res: Response) => {
   try {
     const { domainId } = req.params;
     const { name } = req.body;
-    
+
     if (!name || typeof name !== 'string') return res.status(400).json({ success: false, message: "Subdomain name is required" });
     const sanitizedName = name.trim();
     if (!sanitizedName) return res.status(400).json({ success: false, message: "Subdomain name cannot be empty" });
@@ -140,7 +150,7 @@ export const updateSubdomain = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const { name } = req.body;
-    
+
     if (!name || typeof name !== 'string') return res.status(400).json({ success: false, message: "Subdomain name is required" });
     const sanitizedName = name.trim();
     if (!sanitizedName) return res.status(400).json({ success: false, message: "Subdomain name cannot be empty" });
@@ -159,7 +169,7 @@ export const updateSubdomain = async (req: AuthRequest, res: Response) => {
 export const deleteSubdomain = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    
+
     const docsCount = await prisma.document.count({ where: { subdomainId: id } });
     if (docsCount > 0) return res.status(400).json({ success: false, message: "Cannot delete subdomain with associated documents" });
 

@@ -48,14 +48,29 @@ model Department {
   updatedAt DateTime   @updatedAt
   documents Document[]
   users     User[]
+  sections  Section[]
+}
+
+model Section {
+  id           String     @id @default(uuid())
+  name         String
+  departmentId String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  documents    Document[]
+
+  @@unique([name, departmentId])
+  @@index([departmentId])
 }
 
 model Domain {
-  id        String     @id @default(uuid())
-  name      String     @unique
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  documents Document[]
+  id         String      @id @default(uuid())
+  name       String      @unique
+  isFaculty  Boolean     @default(false)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  documents  Document[]
   subdomains Subdomain[]
 }
 
@@ -88,8 +103,9 @@ model Document {
   googleDriveFileId                String?
   mimeType                         String?
   status                           DocumentStatus    @default(PENDING)
-  uploadedById                     String
+  uploadedById                     String?
   departmentId                     String?
+  sectionId                        String?
   domainId                         String
   subdomainId                      String?
   academicYearId                   String?
@@ -101,6 +117,7 @@ model Document {
   branch                           String?
   semester                         String?
   section                          String?
+  yearOfStudy                      String?
   isDeleted                        Boolean           @default(false)
   deletedAt                        DateTime?
   retentionUntil                   DateTime?
@@ -109,16 +126,18 @@ model Document {
   academicYear                     AcademicYear?     @relation(fields: [academicYearId], references: [id])
   User_Document_approvedByIdToUser User?             @relation("Document_approvedByIdToUser", fields: [approvedById], references: [id])
   department                       Department?       @relation(fields: [departmentId], references: [id])
+  sectionRel                       Section?          @relation(fields: [sectionId], references: [id], onDelete: SetNull)
   domain                           Domain            @relation(fields: [domainId], references: [id])
   subdomain                        Subdomain?        @relation(fields: [subdomainId], references: [id])
   User_Document_rejectedByIdToUser User?             @relation("Document_rejectedByIdToUser", fields: [rejectedById], references: [id])
-  uploadedBy                       User              @relation("UploadedBy", fields: [uploadedById], references: [id])
+  uploadedBy                       User?             @relation("UploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
   starredByUsers                   StarredDocument[]
   accessType                       DocumentAccess    @default(NONE)
   facultyAccess                    DocumentFacultyAccess[]
 
   @@index([uploadedById])
   @@index([departmentId])
+  @@index([sectionId])
   @@index([domainId])
   @@index([academicYearId])
   @@index([deletedAt])

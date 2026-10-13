@@ -17,6 +17,7 @@ export default function AdminTrash() {
   const {
     sortBy, setSortBy,
     currentPage, totalPages, handlePageChange,
+    itemsPerPage, setItemsPerPage,
     viewMode, setViewMode,
     paginatedData, totalItems
   } = useDataView(trashFiles, "Newest first", 10);
@@ -62,7 +63,7 @@ export default function AdminTrash() {
         </div>
       </div>
 
-      {isDataLoading ? (
+      {isDataLoading && trashDocuments.length === 0 ? (
         <div className="bg-white border border-[var(--border)] rounded-2xl p-12 flex flex-col items-center justify-center text-center min-h-[400px]">
           <div className="w-8 h-8 border-4 border-gray-200 border-t-[var(--archyv-accent)] rounded-full animate-spin mb-4"></div>
           <h3 className="text-lg font-bold text-foreground mb-2">Loading trash...</h3>
@@ -97,7 +98,8 @@ export default function AdminTrash() {
         totalPages={totalPages}
         onPageChange={handlePageChange}
         totalItems={totalItems}
-        itemsPerPage={10}
+        itemsPerPage={itemsPerPage}
+        onItemsPerPageChange={setItemsPerPage}
         label="trash files"
       />
     </div>

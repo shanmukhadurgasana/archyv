@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getUsers, createUser, updateUser, deleteUser, updateUserAvatar } from "../controllers/userController";
+import { getUsers, createUser, updateUser, deleteUser, updateUserAvatar, getUserAvatar } from "../controllers/userController";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { Role } from "@prisma/client";
 import multer from "multer";
@@ -11,8 +11,13 @@ const upload = multer({
 
 const router = Router();
 
-// Protect all user routes, only accessible by ADMIN
+// Protect all user routes, first check if user is authenticated
 router.use(requireAuth as any);
+
+// Avatar endpoint should be accessible by any authenticated user to load images
+router.get("/:id/avatar", getUserAvatar as any);
+
+// Rest of the routes only accessible by ADMIN
 router.use(requireRole(Role.ADMIN) as any);
 
 router.get("/", getUsers as any);

@@ -25,7 +25,11 @@ export default function AdminFaculty() {
 
   const [showViewModal, setShowViewModal] = useState<User | null>(null);
 
-  const { users, documents, createFaculty, deleteFaculty, updateFaculty } = useAppContext();
+  const { users, documents, departments, createFaculty, deleteFaculty, updateFaculty } = useAppContext();
+
+  const departmentOptions = departments && departments.length > 0
+    ? [...departments].map(d => d.name).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
+    : ["CSD", "CSIT"].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
 
   const facultyList = users.filter(u => {
     if (u.role !== "faculty") return false;
@@ -272,7 +276,7 @@ export default function AdminFaculty() {
                   <CustomDropdown
                     value={newFaculty.department}
                     onChange={(val) => setNewFaculty({ ...newFaculty, department: val })}
-                    options={["CSD", "CSIT"]}
+                    options={departmentOptions}
                     fullWidth
                   />
                 </div>
@@ -360,7 +364,12 @@ export default function AdminFaculty() {
               <div className="flex flex-col items-center mb-6 relative group w-24 h-24 mx-auto">
                 <div className="w-24 h-24 rounded-full bg-[var(--archyv-accent)]/20 flex items-center justify-center text-3xl font-bold text-foreground overflow-hidden">
                   {editFacultyData.avatar ? (
-                    <img src={editFacultyData.avatar} alt={editFacultyData.name} className="w-full h-full object-cover" />
+                    <img 
+                      src={editFacultyData.avatar.startsWith('/api') ? `${process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:5000'}${editFacultyData.avatar}` : editFacultyData.avatar} 
+                      alt={editFacultyData.name} 
+                      className="w-full h-full object-cover" 
+                      crossOrigin="use-credentials"
+                    />
                   ) : (
                     (editFacultyData.name || "A").split(" ").map((n: string) => n[0]).join("").substring(0, 2).toUpperCase()
                   )}
@@ -439,9 +448,9 @@ export default function AdminFaculty() {
                 <div className="space-y-1.5">
                   <label className="text-sm font-semibold text-foreground">Department</label>
                   <CustomDropdown
-                    value={editFacultyData.department || "CSD"}
+                    value={editFacultyData.department || (departmentOptions[0] || "CSD")}
                     onChange={(val) => setEditFacultyData({ ...editFacultyData, department: val })}
-                    options={["CSD", "CSIT"]}
+                    options={departmentOptions}
                     fullWidth
                   />
                 </div>
@@ -504,7 +513,12 @@ export default function AdminFaculty() {
               <div className="flex items-center gap-4 mb-6">
                 <div className="w-16 h-16 rounded-full bg-[var(--archyv-accent)]/20 flex items-center justify-center text-xl font-bold text-foreground shrink-0 overflow-hidden">
                   {showViewModal.avatar ? (
-                    <img src={showViewModal.avatar} alt={showViewModal.name} className="w-full h-full object-cover" />
+                    <img 
+                      src={showViewModal.avatar.startsWith('/api') ? `${process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:5000'}${showViewModal.avatar}` : showViewModal.avatar} 
+                      alt={showViewModal.name} 
+                      className="w-full h-full object-cover" 
+                      crossOrigin="use-credentials"
+                    />
                   ) : (
                     (showViewModal.name || "A").substring(0, 2).toUpperCase()
                   )}

@@ -44,6 +44,11 @@ export interface Document {
   status?: string;
   accessType?: string;
   facultyAccess?: any[];
+  subdomain?: string | null;
+  yearOfStudy?: string;
+  semester?: string;
+  branch?: string;
+  section?: string;
 }
 
 export const mockFacultyUser: User = {

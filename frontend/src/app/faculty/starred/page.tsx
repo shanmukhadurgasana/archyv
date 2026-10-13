@@ -21,6 +21,7 @@ export default function FacultyStarred() {
   const {
     sortBy, setSortBy,
     currentPage, totalPages, handlePageChange,
+    itemsPerPage, setItemsPerPage,
     viewMode, setViewMode,
     paginatedData, totalItems
   } = useDataView(starredFiles, "Newest first", 10);
@@ -49,7 +50,7 @@ export default function FacultyStarred() {
         </div>
       </PageHeader>
 
-      {isDataLoading ? (
+      {isDataLoading && documents.length === 0 ? (
         <div className="bg-white border border-[var(--border)] rounded-2xl p-12 flex flex-col items-center justify-center text-center min-h-[400px]">
           <div className="w-8 h-8 border-4 border-gray-200 border-t-[var(--archyv-accent)] rounded-full animate-spin mb-4"></div>
           <h3 className="text-lg font-bold text-foreground mb-2">Loading starred files...</h3>
@@ -84,14 +85,15 @@ export default function FacultyStarred() {
             totalPages={totalPages}
             onPageChange={handlePageChange}
             totalItems={totalItems}
-            itemsPerPage={10}
+            itemsPerPage={itemsPerPage}
+            onItemsPerPageChange={setItemsPerPage}
             label="starred files"
           />
         </>
       ) : (
         <div className="bg-white border border-[var(--border)] rounded-2xl p-12 flex flex-col items-center justify-center text-center mt-12">
           <div className="w-24 h-24 relative mb-4 opacity-70">
-            <Image src="/logo.png" alt="No starred files" fill className="object-contain" />
+            <Image src="/logo.png" alt="No starred files" fill sizes="96px" className="object-contain" />
             <div className="absolute -bottom-2 -right-2 bg-[var(--archyv-accent)] rounded-full p-1.5 text-white shadow-md">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
             </div>

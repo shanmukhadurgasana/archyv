@@ -10,46 +10,77 @@ import CustomDropdown from "@/components/ui/CustomDropdown";
 export default function AdminUpload() {
   const router = useRouter();
   const [title, setTitle] = useState("");
+  const [isTitleEdited, setIsTitleEdited] = useState(false);
   const [department, setDepartment] = useState("");
+  const [section, setSection] = useState("");
   const [domain, setDomain] = useState("");
   const [subdomain, setSubdomain] = useState("");
   const [year, setYear] = useState("");
-  const [branch, setBranch] = useState("");
+  const [yearOfStudy, setYearOfStudy] = useState("");
   const [semester, setSemester] = useState("");
-  const [section, setSection] = useState("");
   const [accessType, setAccessType] = useState<string>("None of the Faculty");
   const [selectedFacultyNames, setSelectedFacultyNames] = useState<string[]>([]);
 
   const { users, addDocument, domains, academicYears, departments } = useAppContext();
-  
-  // Initialize defaults when context data loads
-  useEffect(() => {
-    if (domains.length > 0 && !domain) setDomain(domains[0].name);
-    if (academicYears.length > 0 && !year) setYear(academicYears[0].year);
-    if (departments.length > 0 && !department) setDepartment(departments[0].name);
-  }, [domains, academicYears, departments]);
+
+  const sortedDomains = [...domains].map(d => d.name).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+  const sortedAcademicYears = [...academicYears].map(y => y.year).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+  const sortedDepartments = [...departments].map(d => d.name).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
 
   const selectedDomainObj = domains.find(d => d.name === domain);
-  const subdomainOptions = selectedDomainObj?.subdomains?.map(s => s.name) || [];
+  const isFacultyDomain = Boolean(selectedDomainObj?.isFaculty);
+  const subdomainOptions = (selectedDomainObj?.subdomains?.map(s => s.name) || []).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+  const facultyBranchOptions = Array.from(new Set([...sortedDepartments, "CSD", "CSIT"])).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+
+  const selectedBranchObj = departments.find(d => d.name === department);
+  const branchSectionOptions = (selectedBranchObj?.sections?.map(s => s.name) || []).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
 
   useEffect(() => {
-    if (subdomainOptions.length > 0 && !subdomainOptions.includes(subdomain)) {
-      setSubdomain(subdomainOptions[0]);
-    } else if (subdomainOptions.length === 0 && subdomain !== "") {
+    if (!subdomainOptions.includes(subdomain)) {
       setSubdomain("");
     }
-  }, [domain, subdomainOptions, subdomain]);
+  }, [domain, subdomainOptions]);
 
-  // Auto-generate title based on fields
   useEffect(() => {
-    const generatedTitle = [domain, subdomain, year, branch, semester, section]
-      .filter(Boolean)
-      .join(".");
-    setTitle(generatedTitle);
-  }, [domain, subdomain, year, branch, semester, section]);
+    if (section && section !== "Overall Section" && !branchSectionOptions.includes(section)) {
+      setSection("");
+    }
+  }, [department, branchSectionOptions]);
+
+  const formatYearOfStudy = (val: string) => {
+    if (!val) return "";
+    const s = val.trim().toLowerCase();
+    if (s.startsWith("1") || s.includes("1st") || s.includes("1 st") || s === "first" || s === "i") return "1st";
+    if (s.startsWith("2") || s.includes("2nd") || s.includes("2 nd") || s === "second" || s === "ii") return "2nd";
+    if (s.startsWith("3") || s.includes("3rd") || s.includes("3 rd") || s === "third" || s === "iii") return "3rd";
+    if (s.startsWith("4") || s.includes("4th") || s.includes("4 th") || s === "fourth" || s === "iv") return "4th";
+    return val.replace(/\s*(yr|year)s?/i, '').replace(/[/\\]\d+/g, '').trim();
+  };
+
+  // Auto-generate title based on fields: domain.academicyear.yearofstuding.branch.section.sem.subdomain
+  useEffect(() => {
+    if (!isTitleEdited) {
+      const cleanSection = (section && section !== "Overall Section") ? section : "";
+      if (isFacultyDomain) {
+        const generatedTitle = [domain, subdomain, department, cleanSection]
+          .filter(Boolean)
+          .join(".");
+        setTitle(generatedTitle);
+      } else {
+        const formattedYear = year ? year.split('-').map(p => p.slice(-2)).join('-') : "";
+        const formattedYos = formatYearOfStudy(yearOfStudy);
+        const cleanSemester = (semester && semester !== "No Semester" && semester !== "None") ? semester : "";
+        
+        const generatedTitle = [domain, formattedYear, formattedYos, department, cleanSection, cleanSemester, subdomain]
+          .filter(Boolean)
+          .join(".");
+        setTitle(generatedTitle);
+      }
+    }
+  }, [domain, subdomain, year, yearOfStudy, department, section, semester, isFacultyDomain, isTitleEdited]);
 
   const facultyUsers = users.filter(u => u.role.toUpperCase() === "FACULTY" && u.status === "Active");
-  const facultyNames = facultyUsers.map(u => u.name);
+  const facultyNames = facultyUsers.map(u => u.name).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -93,6 +124,14 @@ export default function AdminUpload() {
   const handleUpload = async () => {
     if (!selectedFile) return alert("Please select a file before uploading.");
     if (!title) return alert("Please enter a title");
+    if (!domain) return alert("Please select a domain");
+    if (isFacultyDomain) {
+      if (!department) return alert("Please select a branch");
+    } else {
+      if (!year || !yearOfStudy || !department) {
+        return alert("Please fill in all required fields (Academic Year, Year of Study, and Branch).");
+      }
+    }
     if (isUploading) return;
     setIsUploading(true);
 
@@ -103,10 +142,21 @@ export default function AdminUpload() {
       formData.append("domain", domain);
       if (subdomain) formData.append("subdomain", subdomain);
       formData.append("department", department);
-      formData.append("academicYear", year);
-      formData.append("branch", branch);
-      formData.append("semester", semester);
-      formData.append("section", section);
+      formData.append("branch", department);
+      const cleanSection = (section && section !== "Overall Section") ? section : "";
+      if (cleanSection) {
+        formData.append("section", cleanSection);
+      } else {
+        formData.append("section", "Overall Section");
+      }
+      if (!isFacultyDomain) {
+        formData.append("academicYear", year);
+        formData.append("yearOfStudy", yearOfStudy);
+        const cleanSemester = (semester && semester !== "No Semester" && semester !== "None") ? semester : "";
+        if (cleanSemester) {
+          formData.append("semester", cleanSemester);
+        }
+      }
 
       let finalAccessType = "NONE";
       if (accessType === "All Faculty") finalAccessType = "ALL_FACULTY";
@@ -130,7 +180,7 @@ export default function AdminUpload() {
         try {
           const errData = await response.json();
           if (errData.message) errMsg = errData.message;
-        } catch(e) {}
+        } catch (e) { }
         throw new Error(errMsg);
       }
 
@@ -218,25 +268,17 @@ export default function AdminUpload() {
 
           <form className="space-y-4 flex flex-col" onSubmit={(e) => { e.preventDefault(); handleUpload(); }}>
             <div className="space-y-1.5">
-              <label className="text-sm font-semibold text-foreground">Document Title (Auto-generated)</label>
+              <label className="text-sm font-semibold text-foreground">Document Title</label>
               <input
                 type="text"
                 placeholder="Title will be auto-generated..."
                 value={title}
-                readOnly
-                className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-500 cursor-not-allowed focus:outline-none transition-all"
+                onChange={(e) => {
+                  setTitle(e.target.value);
+                  setIsTitleEdited(true);
+                }}
+                className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[var(--archyv-accent)]/50 focus:border-[var(--archyv-accent)] transition-all"
               />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-sm font-semibold text-foreground">Department</label>
-              <CustomDropdown
-                value={department}
-                onChange={setDepartment}
-                options={departments.map(d => d.name)}
-                fullWidth
-              />
-              {/* Note: The label in CustomDropdown is optional. We are using the external label for consistency with other inputs. */}
             </div>
 
             <div className="space-y-1.5">
@@ -244,7 +286,8 @@ export default function AdminUpload() {
               <CustomDropdown
                 value={domain}
                 onChange={setDomain}
-                options={domains.map(d => d.name)}
+                options={sortedDomains}
+                placeholder="Select Domain"
                 fullWidth
               />
             </div>
@@ -255,57 +298,110 @@ export default function AdminUpload() {
                 <CustomDropdown
                   value={subdomain}
                   onChange={setSubdomain}
-                  options={subdomainOptions}
+                  options={subdomainOptions.sort()}
+                  placeholder="Select Subdomain"
                   fullWidth
                 />
               </div>
             )}
 
-            <div className="space-y-1.5">
-              <label className="text-sm font-semibold text-foreground">Academic Year</label>
-              <CustomDropdown
-                value={year}
-                onChange={setYear}
-                options={academicYears.map(y => y.year)}
-                fullWidth
-              />
-            </div>
+            {isFacultyDomain ? (
+              <>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-semibold text-foreground">Branch</label>
+                  <CustomDropdown
+                    value={department}
+                    onChange={setDepartment}
+                    options={facultyBranchOptions}
+                    placeholder="Select Branch"
+                    fullWidth
+                  />
+                </div>
+                {branchSectionOptions.length > 0 && (
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-semibold text-foreground">Section (Optional)</label>
+                    <CustomDropdown
+                      value={section}
+                      onChange={setSection}
+                      options={["Overall Section", ...branchSectionOptions]}
+                      placeholder="Overall Section"
+                      fullWidth
+                    />
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-semibold text-foreground">Academic Year</label>
+                  <CustomDropdown
+                    value={year}
+                    onChange={setYear}
+                    options={sortedAcademicYears}
+                    placeholder="Select Academic Year"
+                    fullWidth
+                  />
+                </div>
 
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-1.5">
-                <label className="text-sm font-semibold text-foreground">Branch</label>
-                <input
-                  type="text"
-                  placeholder="e.g. CSE"
-                  value={branch}
-                  onChange={e => setBranch(e.target.value.toUpperCase())}
-                  required
-                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--archyv-accent)]/50 focus:border-[var(--archyv-accent)] transition-all"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-sm font-semibold text-foreground">Sem</label>
-                <input
-                  type="text"
-                  placeholder="e.g. 3"
-                  value={semester}
-                  onChange={e => setSemester(e.target.value)}
-                  required
-                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--archyv-accent)]/50 focus:border-[var(--archyv-accent)] transition-all"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-sm font-semibold text-foreground">Sec</label>
-                <input
-                  type="text"
-                  placeholder="e.g. A"
-                  value={section}
-                  onChange={e => setSection(e.target.value.toUpperCase())}
-                  required
-                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--archyv-accent)]/50 focus:border-[var(--archyv-accent)] transition-all"
-                />
-              </div>
-            </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-semibold text-foreground">Year of Studying</label>
+                  <CustomDropdown
+                    value={yearOfStudy}
+                    onChange={setYearOfStudy}
+                    options={["1st yr", "2nd yr", "3rd yr", "4th yr"]}
+                    placeholder="Select Year of Study"
+                    fullWidth
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-semibold text-foreground">Branch</label>
+                  <CustomDropdown
+                    value={department}
+                    onChange={setDepartment}
+                    options={sortedDepartments}
+                    placeholder="Select Branch"
+                    fullWidth
+                  />
+                </div>
+
+                {branchSectionOptions.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-semibold text-foreground">Section (Optional)</label>
+                      <CustomDropdown
+                        value={section}
+                        onChange={setSection}
+                        options={["Overall Section", ...branchSectionOptions]}
+                        placeholder="Overall Section"
+                        fullWidth
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-semibold text-foreground">Sem (Optional)</label>
+                      <CustomDropdown
+                        value={semester || "No Semester"}
+                        onChange={(val) => setSemester(val === "No Semester" ? "" : val)}
+                        options={["No Semester", "1", "2"]}
+                        placeholder="Select Sem (Optional)"
+                        fullWidth
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-semibold text-foreground">Sem (Optional)</label>
+                    <CustomDropdown
+                      value={semester || "No Semester"}
+                      onChange={(val) => setSemester(val === "No Semester" ? "" : val)}
+                      options={["No Semester", "1", "2"]}
+                      placeholder="Select Sem (Optional)"
+                      fullWidth
+                    />
+                  </div>
+                )}
+              </>
+            )}
 
             <div className="space-y-1.5 pb-2">
               <label className="text-sm font-semibold text-foreground flex items-center gap-1">
@@ -314,7 +410,7 @@ export default function AdminUpload() {
               <CustomDropdown
                 value={accessType}
                 onChange={(val) => setAccessType(val as string)}
-                options={["None of the Faculty", "All Faculty", "Select Faculty"]}
+                options={["All Faculty", "None of the Faculty", "Select Faculty"]}
                 fullWidth
                 icon={<Users className="w-4 h-4 text-gray-400" />}
               />

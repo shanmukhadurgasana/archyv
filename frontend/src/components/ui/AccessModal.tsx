@@ -20,7 +20,9 @@ export default function AccessModal({ isOpen, document, onClose }: AccessModalPr
   const [accessMode, setAccessMode] = useState<string>("NONE");
   const [selectedFaculty, setSelectedFaculty] = useState<string[]>([]);
 
-  const facultyUsers = users.filter(u => u.role.toUpperCase() === 'FACULTY' && u.status === 'Active');
+  const facultyUsers = [...users]
+    .filter(u => u.role.toUpperCase() === 'FACULTY' && u.status === 'Active')
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
 
   useEffect(() => {
     setMounted(true);

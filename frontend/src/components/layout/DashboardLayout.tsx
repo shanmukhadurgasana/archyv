@@ -11,11 +11,17 @@ interface DashboardLayoutProps {
 }
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
-  const { currentUser, authStatus } = useAppContext();
+  const { currentUser, authStatus, isRefreshing } = useAppContext();
   const pathname = usePathname();
   const router = useRouter();
+  const [mounted, setMounted] = React.useState(false);
 
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
     if (authStatus === "unauthenticated") {
       router.push("/");
     } else if (authStatus === "authenticated" && currentUser) {
@@ -25,12 +31,19 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         router.push("/admin/overview");
       }
     }
-  }, [authStatus, currentUser, pathname, router]);
+  }, [mounted, authStatus, currentUser, pathname, router]);
 
-  if (authStatus === "loading") {
+  if (!mounted || (authStatus === "loading" && !currentUser)) {
+    const roleFromPath = pathname.startsWith("/admin") ? "admin" : "faculty";
     return (
-      <div className="flex h-screen w-full items-center justify-center bg-white">
-        <div className="w-8 h-8 border-4 border-[var(--archyv-accent)] border-t-transparent rounded-full animate-spin"></div>
+      <div className="flex h-screen bg-white">
+        <Sidebar role={roleFromPath} />
+        <div className="flex-1 flex flex-col min-w-0">
+          <header className="h-20 border-b border-[var(--border)] bg-background flex items-center justify-between px-8 sticky top-0 z-10" />
+          <main className="flex-1 overflow-y-auto p-8 bg-[var(--background)] flex items-center justify-center">
+            <div className="w-8 h-8 border-4 border-[var(--archyv-accent)] border-t-transparent rounded-full animate-spin"></div>
+          </main>
+        </div>
       </div>
     );
   }
@@ -44,6 +57,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       <Sidebar role={currentUser.role.toLowerCase() as "admin" | "faculty"} />
       <div className="flex-1 flex flex-col min-w-0">
         <Header user={currentUser} />
+        {isRefreshing && (
+          <div className="h-0.5 w-full bg-[var(--border)] overflow-hidden">
+            <div className="h-full bg-[var(--archyv-accent)] animate-pulse w-full"></div>
+          </div>
+        )}
         <main className="flex-1 overflow-y-auto p-8 bg-[var(--background)]">
           <div className="max-w-6xl mx-auto w-full h-full">
             {children}

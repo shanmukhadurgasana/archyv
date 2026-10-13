@@ -1,5 +1,6 @@
 import React from "react";
 import clsx from "clsx";
+import { ChevronDown } from "lucide-react";
 
 interface PaginationProps {
   currentPage: number;
@@ -7,6 +8,8 @@ interface PaginationProps {
   onPageChange: (page: number) => void;
   totalItems: number;
   itemsPerPage: number;
+  onItemsPerPageChange?: (itemsPerPage: number) => void;
+  itemsPerPageOptions?: number[];
   label?: string;
 }
 
@@ -16,6 +19,8 @@ export default function Pagination({
   onPageChange,
   totalItems,
   itemsPerPage,
+  onItemsPerPageChange,
+  itemsPerPageOptions = [10, 15, 20],
   label = "files"
 }: PaginationProps) {
   if (totalItems === 0) return null;
@@ -89,10 +94,20 @@ export default function Pagination({
         </button>
       </div>
 
-      <div className="hidden sm:flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-1.5 bg-white">
-        <select className="text-sm font-medium text-gray-600 bg-transparent border-none focus:outline-none appearance-none pr-4 cursor-pointer outline-none">
-          <option>{itemsPerPage} per page</option>
+      <div className="flex items-center gap-1.5 border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white shadow-sm hover:border-gray-300 transition-colors relative">
+        <select
+          value={itemsPerPage}
+          onChange={(e) => onItemsPerPageChange?.(Number(e.target.value))}
+          disabled={!onItemsPerPageChange}
+          className="text-xs sm:text-sm font-medium text-gray-700 bg-transparent border-none focus:outline-none appearance-none pr-5 cursor-pointer outline-none"
+        >
+          {itemsPerPageOptions.map((opt) => (
+            <option key={opt} value={opt} className="text-gray-800">
+              {opt} per page
+            </option>
+          ))}
         </select>
+        <ChevronDown className="w-3.5 h-3.5 text-gray-400 pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2" />
       </div>
     </div>
   );

@@ -57,7 +57,12 @@ export default function FacultyProfile() {
         <div className="w-full lg:w-[320px] shrink-0 bg-white border border-[var(--border)] rounded-2xl p-8 flex flex-col items-center text-center h-fit">
           <div className="w-32 h-32 rounded-full bg-[var(--archyv-accent)]/20 flex items-center justify-center text-4xl font-bold text-foreground mb-6 relative overflow-hidden">
             {user.avatar ? (
-              <Image src={user.avatar} alt={user.name} fill className="object-cover" />
+              <img 
+                src={user.avatar.startsWith('/api') ? `${process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:5000'}${user.avatar}` : user.avatar} 
+                alt={user.name} 
+                className="w-full h-full object-cover rounded-full" 
+                crossOrigin="use-credentials"
+              />
             ) : (
               user.name.split(" ").map(n => n[0]).join("")
             )}

@@ -52,7 +52,7 @@ export default function FacultyOverview() {
           <span className="text-gray-400">All Documents</span>
         </div>
 
-        {isDataLoading ? (
+        {isDataLoading && documents.length === 0 ? (
           <div className="text-center py-8 text-sm text-gray-500 bg-white border border-[var(--border)] rounded-2xl flex items-center justify-center gap-3">
             <div className="w-5 h-5 border-2 border-[var(--archyv-accent)] border-t-transparent rounded-full animate-spin"></div>
             Loading documents...

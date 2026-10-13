@@ -7,6 +7,7 @@ import clsx from "clsx";
 import { useAppContext } from "@/store/AppContext";
 import ConfirmationModal from "@/components/ui/ConfirmationModal";
 import AccessModal from "@/components/ui/AccessModal";
+import EditDocumentModal from "@/components/ui/EditDocumentModal";
 
 interface FileCardProps {
   file: Document;
@@ -18,6 +19,7 @@ export default function FileCard({ file, isTrash = false }: FileCardProps) {
   const pathname = usePathname();
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showAccessModal, setShowAccessModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ top: false });
   const menuRef = useRef<HTMLDivElement>(null);
@@ -172,6 +174,12 @@ export default function FileCard({ file, isTrash = false }: FileCardProps) {
               {isMenuOpen && (
                 <div className={`absolute ${menuPosition.top ? 'bottom-full mb-1' : 'top-full mt-1'} right-0 w-36 bg-white border border-[var(--border)] rounded-lg shadow-lg overflow-hidden z-50 py-1`} onClick={(e) => e.stopPropagation()}>
                   <button
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsMenuOpen(false); setShowEditModal(true); }}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+                  >
+                    Edit
+                  </button>
+                  <button
                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsMenuOpen(false); handleNativeShare(); }}
                     className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                   >
@@ -256,6 +264,11 @@ export default function FileCard({ file, isTrash = false }: FileCardProps) {
         isOpen={showAccessModal}
         document={file}
         onClose={() => setShowAccessModal(false)}
+      />
+      <EditDocumentModal
+        isOpen={showEditModal}
+        document={file}
+        onClose={() => setShowEditModal(false)}
       />
     </>
   );

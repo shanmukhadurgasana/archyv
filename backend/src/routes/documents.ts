@@ -15,7 +15,8 @@ import {
   cleanupExpiredDocuments,
   approveDocument,
   declineDocument,
-  updateDocumentAccess
+  updateDocumentAccess,
+  updateDocument
 } from "../controllers/documentController";
 
 const router = Router();
@@ -45,6 +46,9 @@ router.post("/", upload.single("file"), createDocument as any);
 
 // GET /api/documents/:id - Get a specific document
 router.get("/:id", getDocumentById as any);
+
+// PATCH /api/documents/:id - Update document metadata
+router.patch("/:id", updateDocument as any);
 
 // DELETE /api/documents/:id - Soft delete a document
 router.delete("/:id", requireRole(Role.ADMIN) as any, softDeleteDocument as any);

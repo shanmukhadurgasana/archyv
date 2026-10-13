@@ -13,43 +13,86 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
     }
 
     if (!req.file) {
+      require('fs').appendFileSync('debug.log', 'No file provided\n');
       return res.status(400).json({ success: false, message: "No file provided" });
     }
 
-    const { name: originalTitle, domain, subdomain, department, academicYear, accessType, selectedFacultyIds, branch, semester, section } = req.body;
+    const { name: originalTitle, domain, subdomain, department, academicYear, accessType, selectedFacultyIds, branch, semester, section, yearOfStudy } = req.body;
 
-    if (!domain || !academicYear || !branch || !semester || !section) {
-      return res.status(400).json({ success: false, message: "Missing required fields for document naming" });
+    if (!domain) {
+      return res.status(400).json({ success: false, message: "Domain is required" });
     }
 
-    const originalExt = req.file.originalname.split(".").pop() || "";
-    const parts = [domain, subdomain, academicYear, branch, semester, section].filter(Boolean);
-    const canonicalName = `${parts.join(".")}${originalExt ? "." + originalExt : ""}`;
-    const sanitizedFileName = canonicalName.replace(/[/\\]/g, "");
-
-
-    // Lookup Foreign Keys Concurrently
-    const [domainRecord, deptRecord, yearRecord, subdomainRecord] = await Promise.all([
-      prisma.domain.findUnique({ where: { name: domain } }),
-      department ? prisma.department.findUnique({ where: { name: department } }) : Promise.resolve(null),
-      academicYear ? prisma.academicYear.findUnique({ where: { year: academicYear } }) : Promise.resolve(null),
-      subdomain ? prisma.subdomain.findFirst({ where: { name: subdomain, domain: { name: domain } } }) : Promise.resolve(null)
-    ]);
-
+    // Lookup Domain Record first to know if this is a faculty domain
+    const domainRecord = await prisma.domain.findUnique({ where: { name: domain } });
     if (!domainRecord) {
       return res.status(400).json({ success: false, message: `Domain '${domain}' not found` });
     }
 
-    if (department && !deptRecord) {
-      return res.status(400).json({ success: false, message: `Department '${department}' not found` });
+    const isFacultyDomain = Boolean(domainRecord.isFaculty);
+
+    const effectiveBranch = branch || department;
+    const cleanSection = (section && section !== "Overall Section" && section !== "N/A") ? section.trim() : "";
+
+    if (isFacultyDomain) {
+      if (!effectiveBranch) {
+        return res.status(400).json({ success: false, message: "Branch is required for faculty domain uploads" });
+      }
+    } else {
+      if (!academicYear || !effectiveBranch || !yearOfStudy) {
+        require('fs').appendFileSync('debug.log', 'Missing fields: ' + JSON.stringify(req.body) + '\n');
+        return res.status(400).json({ success: false, message: "Missing required fields (Academic Year, Branch, Year of Study) for document naming" });
+      }
     }
 
-    if (academicYear && !yearRecord) {
+    const originalExt = req.file.originalname.split(".").pop() || "";
+    let generatedName = "";
+    if (isFacultyDomain) {
+      const parts = [domain, subdomain, effectiveBranch, cleanSection].filter(Boolean);
+      generatedName = `${parts.join(".")}${originalExt ? "." + originalExt : ""}`;
+    } else {
+      const formattedYear = academicYear ? academicYear.split('-').map((p: string) => p.slice(-2)).join('-') : "";
+      const formatYearOfStudy = (val: string) => {
+        if (!val) return "";
+        const s = val.trim().toLowerCase();
+        if (s.startsWith("1") || s.includes("1st") || s.includes("1 st") || s === "first" || s === "i") return "1st";
+        if (s.startsWith("2") || s.includes("2nd") || s.includes("2 nd") || s === "second" || s === "ii") return "2nd";
+        if (s.startsWith("3") || s.includes("3rd") || s.includes("3 rd") || s === "third" || s === "iii") return "3rd";
+        if (s.startsWith("4") || s.includes("4th") || s.includes("4 th") || s === "fourth" || s === "iv") return "4th";
+        return val.replace(/\s*(yr|year)s?/i, '').replace(/[/\\]\d+/g, '').trim();
+      };
+      const formattedYos = formatYearOfStudy(yearOfStudy);
+      const cleanSemester = (semester && semester !== "No Semester" && semester !== "None") ? String(semester).trim() : "";
+      // domain.academicyear.yearofstuding.branch.section.sem.subdomain
+      const parts = [domain, formattedYear, formattedYos, effectiveBranch, cleanSection, cleanSemester, subdomain].filter(Boolean);
+      generatedName = `${parts.join(".")}${originalExt ? "." + originalExt : ""}`;
+    }
+    const finalDocumentName = (originalTitle ? `${originalTitle}${originalExt && !originalTitle.endsWith(`.${originalExt}`) ? "." + originalExt : ""}` : generatedName).replace(/[/\\]/g, "");
+
+    // Lookup Foreign Keys Concurrently
+    const [deptRecord, yearRecord, subdomainRecord] = await Promise.all([
+      effectiveBranch ? prisma.department.findUnique({ where: { name: effectiveBranch } }) : Promise.resolve(null),
+      academicYear ? prisma.academicYear.findUnique({ where: { year: academicYear } }) : Promise.resolve(null),
+      subdomain ? prisma.subdomain.findFirst({ where: { name: subdomain, domain: { name: domain } } }) : Promise.resolve(null)
+    ]);
+
+    if (effectiveBranch && !deptRecord) {
+      return res.status(400).json({ success: false, message: `Branch '${effectiveBranch}' not found` });
+    }
+
+    if (!isFacultyDomain && academicYear && !yearRecord) {
       return res.status(400).json({ success: false, message: `Academic Year '${academicYear}' not found` });
     }
 
     const departmentId = deptRecord?.id || null;
-    const academicYearId = yearRecord?.id || null;
+    let sectionRecord = null;
+    if (cleanSection && departmentId) {
+      sectionRecord = await prisma.section.findFirst({
+        where: { name: cleanSection, departmentId }
+      });
+    }
+
+    const academicYearId = isFacultyDomain ? null : (yearRecord?.id || null);
 
     // Determine type
     let type: DocumentType = "OTHER";
@@ -59,8 +102,8 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
     else if (ext === "xlsx") type = "XLSX";
 
     // 1. Upload to Google Drive
-    const uploadResult = await uploadFileToDrive(req.file.buffer, sanitizedFileName, req.file.mimetype);
-    
+    const uploadResult = await uploadFileToDrive(req.file.buffer, finalDocumentName, req.file.mimetype);
+
     let parsedAccessType: DocumentAccess = "NONE";
     if (accessType === "ALL_FACULTY") parsedAccessType = "ALL_FACULTY";
     else if (accessType === "SELECT_FACULTY") parsedAccessType = "SELECT_FACULTY";
@@ -89,7 +132,7 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
     try {
       const document = await prisma.document.create({
         data: {
-          name: sanitizedFileName,
+          name: finalDocumentName,
           type,
           sizeBytes: BigInt(req.file.size),
           googleDriveFileId: uploadResult.fileId,
@@ -98,10 +141,12 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
           domainId: domainRecord.id,
           subdomainId: subdomainRecord?.id || null,
           departmentId,
-          academicYearId,
-          branch,
-          semester,
-          section,
+          sectionId: sectionRecord?.id || null,
+          academicYearId: isFacultyDomain ? null : academicYearId,
+          yearOfStudy: isFacultyDomain ? null : yearOfStudy,
+          branch: effectiveBranch || null,
+          semester: isFacultyDomain ? null : ((semester && semester !== "No Semester" && semester !== "None") ? String(semester).trim() : null),
+          section: cleanSection || null,
           status: req.user.role?.toUpperCase() === 'ADMIN' ? 'APPROVED' : 'PENDING',
           accessType: parsedAccessType,
           facultyAccess: facultyAccessData.length > 0 ? {
@@ -111,7 +156,9 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
         include: {
           domain: { select: { name: true } },
           department: { select: { name: true } },
+          sectionRel: { select: { name: true } },
           academicYear: { select: { year: true } },
+          subdomain: { select: { name: true } },
           uploadedBy: { select: { name: true } },
           facultyAccess: { select: { facultyId: true } }
         }
@@ -127,7 +174,12 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
         domain: document.domain.name,
         department: document.department?.name,
         year: document.academicYear?.year,
-        uploadedBy: document.uploadedBy.name,
+        subdomain: document.subdomain?.name || null,
+        yearOfStudy: document.yearOfStudy,
+        semester: document.semester,
+        branch: document.branch,
+        section: document.section,
+        uploadedBy: document.uploadedBy?.name || "Unknown User",
         isStarred: false,
         filename: document.name,
         // cloudinaryUrl is no longer returned; removing it or leaving it omitted is fine.
@@ -139,7 +191,7 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
 
       // Create Audit Log
       if (req.user) {
-        await createAuditLog(req.user.id, "UPLOAD_DOCUMENT", sanitizedFileName, domain);
+        await createAuditLog(req.user.id, "UPLOAD_DOCUMENT", finalDocumentName, domain);
       }
     } catch (dbError) {
       // Rollback Google Drive if DB fails
@@ -150,8 +202,9 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
       throw dbError;
     }
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Create document error:", error);
+    require('fs').appendFileSync('debug.log', 'Create doc error: ' + (error.stack || error.message || error) + '\n');
     res.status(500).json({ success: false, message: "Failed to upload document" });
   }
 };
@@ -159,18 +212,24 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
 
 export const getDocuments = async (req: AuthRequest, res: Response) => {
   try {
-    const { 
-      search, 
-      domain, 
-      faculty, 
-      status, 
-      isDeleted, 
+    const {
+      search,
+      domain,
+      subdomain,
+      department,
+      branch,
+      section,
+      academicYear,
+      yearOfStudy,
+      faculty,
+      status,
+      isDeleted,
       isStarred,
-      page = "1", 
+      page = "1",
       limit = "100",
       sortBy = "Newest first"
     } = req.query;
-    
+
     const userRole = req.user?.role;
     const userId = req.user?.id;
 
@@ -179,7 +238,7 @@ export const getDocuments = async (req: AuthRequest, res: Response) => {
     }
 
     const where: any = {};
-    
+
     // 1. Trash vs Active
     where.isDeleted = isDeleted === 'true';
 
@@ -208,12 +267,51 @@ export const getDocuments = async (req: AuthRequest, res: Response) => {
         { uploadedBy: { name: { contains: search as string, mode: "insensitive" } } },
       ];
     }
-    
+
     // 3. Filters
     if (domain && domain !== "All Domains") {
       where.domain = { name: domain as string };
     }
-    
+    if (subdomain && subdomain !== "All Sub Domains") {
+      where.subdomain = { name: subdomain as string };
+    }
+
+    const effectiveBranchQuery = (branch as string) || (department && department !== "All Branch & Sections" && department !== "All Branches" ? (department as string) : undefined);
+    if (effectiveBranchQuery && effectiveBranchQuery !== "All Branches" && effectiveBranchQuery !== "All Branch & Sections") {
+      where.AND = where.AND || [];
+      where.AND.push({
+        OR: [
+          { department: { name: effectiveBranchQuery } },
+          { branch: effectiveBranchQuery }
+        ]
+      });
+    }
+
+    if (section && section !== "All Sections") {
+      where.AND = where.AND || [];
+      if (section === "Overall Section" || section === "None") {
+        where.AND.push({
+          OR: [
+            { section: null },
+            { section: "" },
+            { section: "Overall Section" },
+            { section: "N/A" }
+          ]
+        });
+      } else {
+        where.AND.push({
+          section: section as string
+        });
+      }
+    }
+
+    if (academicYear && academicYear !== "All Academic Years") {
+      where.academicYear = { year: academicYear as string };
+    }
+    if (yearOfStudy && yearOfStudy !== "All Years of Study") {
+      where.yearOfStudy = yearOfStudy as string;
+    }
+
     if ((userRole as string) === 'ADMIN' || (userRole as string) === 'admin') {
       if (faculty && faculty !== "All Faculty") {
         where.uploadedBy = { name: faculty as string };
@@ -233,12 +331,12 @@ export const getDocuments = async (req: AuthRequest, res: Response) => {
         where.AND.push({ uploadedBy: { name: faculty as string } });
       }
     }
-    
+
     // Pagination
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const limitNum = Math.max(1, Math.min(100, parseInt(limit as string, 10) || 100));
     const skip = (pageNum - 1) * limitNum;
-    
+
     // Sorting
     let orderBy: any = { createdAt: 'desc' };
     if (sortBy === "Oldest first") orderBy = { createdAt: 'asc' };
@@ -261,6 +359,11 @@ export const getDocuments = async (req: AuthRequest, res: Response) => {
           domain: { select: { name: true } },
           department: { select: { name: true } },
           academicYear: { select: { year: true } },
+          subdomain: { select: { name: true } },
+          yearOfStudy: true,
+          semester: true,
+          branch: true,
+          section: true,
           uploadedBy: { select: { name: true } },
           uploadedById: true,
           starredByUsers: { select: { userId: true }, where: { userId } },
@@ -283,7 +386,12 @@ export const getDocuments = async (req: AuthRequest, res: Response) => {
       domain: doc.domain.name,
       department: doc.department?.name,
       year: doc.academicYear?.year,
-      uploadedBy: doc.uploadedBy.name,
+      subdomain: doc.subdomain?.name || null,
+      yearOfStudy: doc.yearOfStudy,
+      semester: doc.semester,
+      branch: doc.branch,
+      section: doc.section,
+      uploadedBy: doc.uploadedBy?.name || "Unknown User",
       uploadedById: doc.uploadedById,
       isStarred: doc.starredByUsers.length > 0,
       status: doc.status,
@@ -292,8 +400,8 @@ export const getDocuments = async (req: AuthRequest, res: Response) => {
       facultyAccess: doc.facultyAccess
     }));
 
-    res.status(200).json({ 
-      success: true, 
+    res.status(200).json({
+      success: true,
       documents: mappedDocs,
       pagination: {
         page: pageNum,
@@ -327,7 +435,7 @@ export const getDocumentById = async (req: AuthRequest, res: Response) => {
     if (req.user?.role?.toUpperCase() !== 'ADMIN') {
       const isOwner = document.uploadedById === req.user?.id;
       const hasAccess = (
-        document.accessType === 'ALL_FACULTY' || 
+        document.accessType === 'ALL_FACULTY' ||
         (document.accessType === 'SELECT_FACULTY' && document.facultyAccess.length > 0)
       );
 
@@ -337,10 +445,12 @@ export const getDocumentById = async (req: AuthRequest, res: Response) => {
     }
     // Admins have global access, so no else block needed
 
-    res.status(200).json({ success: true, document: {
+    res.status(200).json({
+      success: true, document: {
         ...document,
         sizeBytes: document.sizeBytes?.toString()
-    }});
+      }
+    });
   } catch (error) {
     console.error("Get document by id error:", error);
     res.status(500).json({ success: false, message: "Failed to fetch document" });
@@ -355,13 +465,13 @@ export const toggleStar = async (req: AuthRequest, res: Response) => {
     const userId = req.user.id;
 
     // Check if doc exists
-    const doc = await prisma.document.findUnique({ 
-      where: { id: documentId }, 
-      include: { 
-        domain: true, 
+    const doc = await prisma.document.findUnique({
+      where: { id: documentId },
+      include: {
+        domain: true,
         uploadedBy: { select: { id: true, adminId: true, role: true } },
         facultyAccess: { where: { facultyId: userId } }
-      } 
+      }
     });
     if (!doc || doc.isDeleted) {
       return res.status(404).json({ success: false, message: "Document not found" });
@@ -370,7 +480,7 @@ export const toggleStar = async (req: AuthRequest, res: Response) => {
     if (req.user.role?.toUpperCase() !== 'ADMIN') {
       const isOwner = doc.uploadedById === userId;
       const hasAccess = (
-        doc.accessType === 'ALL_FACULTY' || 
+        doc.accessType === 'ALL_FACULTY' ||
         (doc.accessType === 'SELECT_FACULTY' && doc.facultyAccess.length > 0)
       );
 
@@ -413,14 +523,14 @@ export const toggleStar = async (req: AuthRequest, res: Response) => {
 export const viewDocument = async (req: AuthRequest, res: Response) => {
   try {
     const documentId = req.params.id;
-    const document = await prisma.document.findUnique({ 
+    const document = await prisma.document.findUnique({
       where: { id: documentId },
-      include: { 
+      include: {
         uploadedBy: { select: { id: true, adminId: true, role: true } },
         facultyAccess: { where: { facultyId: req.user?.id } }
       }
     });
-    
+
     if (!document || document.isDeleted) {
       return res.status(404).json({ success: false, message: "Document not found" });
     }
@@ -428,7 +538,7 @@ export const viewDocument = async (req: AuthRequest, res: Response) => {
     if (req.user?.role?.toUpperCase() !== 'ADMIN') {
       const isOwner = document.uploadedById === req.user?.id;
       const hasAccess = (
-        document.accessType === 'ALL_FACULTY' || 
+        document.accessType === 'ALL_FACULTY' ||
         (document.accessType === 'SELECT_FACULTY' && document.facultyAccess.length > 0)
       );
 
@@ -445,21 +555,21 @@ export const viewDocument = async (req: AuthRequest, res: Response) => {
     }
 
     const stream = await getFileStreamFromDrive(fileId);
-    
+
     // Set appropriate headers based on document type
     const mimeType = document.mimeType || 'application/octet-stream';
     res.setHeader('Content-Type', mimeType);
-    
+
     // For PDFs and images we want inline viewing, otherwise attachment
     if (document.type === 'PDF' || mimeType.startsWith('image/')) {
       res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(document.name)}"`);
     } else {
       res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(document.name)}"`);
     }
-    
+
     // Pipe the stream to the response
     stream.pipe(res);
-    
+
     stream.on('error', (err: any) => {
       console.error("Error piping Google Drive stream:", err);
       if (!res.headersSent) {
@@ -479,22 +589,22 @@ export const softDeleteDocument = async (req: AuthRequest, res: Response) => {
     }
 
     const documentId = req.params.id;
-    const document = await prisma.document.findUnique({ 
+    const document = await prisma.document.findUnique({
       where: { id: documentId },
-      include: { domain: true, uploadedBy: { select: { id: true, adminId: true } } } 
+      include: { domain: true, uploadedBy: { select: { id: true, adminId: true } } }
     });
-    
+
     if (!document || document.isDeleted) {
       return res.status(404).json({ success: false, message: "Document not found" });
     }
 
     let isAuthorized = true;
     if (req.user.role !== 'ADMIN') {
-      if (document.uploadedBy.id !== req.user.id && document.uploadedBy.adminId !== req.user.id) {
+      if (!document.uploadedBy || (document.uploadedBy.id !== req.user.id && document.uploadedBy.adminId !== req.user.id)) {
         isAuthorized = false;
       }
     }
-    
+
     if (!isAuthorized) {
       return res.status(403).json({ success: false, message: "Forbidden" });
     }
@@ -528,14 +638,14 @@ export const getTrashedDocuments = async (req: AuthRequest, res: Response) => {
   try {
     // Both Admin and Faculty might need to see trash depending on role,
     // but we'll return all trashed docs (could filter by department if needed)
-    
+
     const where: any = { isDeleted: true };
     const userRole = req.user?.role;
     const userId = req.user?.id;
     if ((userRole as string) !== 'ADMIN' && (userRole as string) !== 'admin') {
       where.uploadedById = userId;
     }
-    
+
     const documents = await prisma.document.findMany({
       where,
       select: {
@@ -549,6 +659,11 @@ export const getTrashedDocuments = async (req: AuthRequest, res: Response) => {
         domain: { select: { name: true } },
         department: { select: { name: true } },
         academicYear: { select: { year: true } },
+        subdomain: { select: { name: true } },
+        yearOfStudy: true,
+        semester: true,
+        branch: true,
+        section: true,
         uploadedBy: { select: { name: true } },
         starredByUsers: { select: { userId: true }, where: { userId: req.user?.id } }
       },
@@ -556,7 +671,7 @@ export const getTrashedDocuments = async (req: AuthRequest, res: Response) => {
     });
 
     const mappedDocs = documents.map(doc => {
-      const daysLeft = doc.retentionUntil 
+      const daysLeft = doc.retentionUntil
         ? Math.max(0, Math.ceil((doc.retentionUntil.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
         : 0;
 
@@ -570,7 +685,12 @@ export const getTrashedDocuments = async (req: AuthRequest, res: Response) => {
         domain: doc.domain.name,
         department: doc.department?.name,
         year: doc.academicYear?.year,
-        uploadedBy: doc.uploadedBy.name,
+        subdomain: doc.subdomain?.name || null,
+        yearOfStudy: doc.yearOfStudy,
+        semester: doc.semester,
+        branch: doc.branch,
+        section: doc.section,
+        uploadedBy: doc.uploadedBy?.name || "Unknown User",
         isStarred: doc.starredByUsers.length > 0,
         filename: doc.name,
         isDeleted: true,
@@ -593,18 +713,18 @@ export const restoreDocument = async (req: AuthRequest, res: Response) => {
     }
 
     const documentId = req.params.id;
-    const document = await prisma.document.findUnique({ 
+    const document = await prisma.document.findUnique({
       where: { id: documentId },
-      include: { domain: true, uploadedBy: { select: { id: true, adminId: true } } } 
+      include: { domain: true, uploadedBy: { select: { id: true, adminId: true } } }
     });
-    
+
     if (!document) {
       return res.status(404).json({ success: false, message: "Document not found" });
     }
 
     let isAuthorized = true;
     if (req.user.role !== 'ADMIN') {
-      if (document.uploadedBy.id !== req.user.id && document.uploadedBy.adminId !== req.user.id) {
+      if (!document.uploadedBy || (document.uploadedBy.id !== req.user.id && document.uploadedBy.adminId !== req.user.id)) {
         isAuthorized = false;
       }
     }
@@ -645,18 +765,18 @@ export const permanentDeleteDocument = async (req: AuthRequest, res: Response) =
     }
 
     const documentId = req.params.id;
-    const document = await prisma.document.findUnique({ 
+    const document = await prisma.document.findUnique({
       where: { id: documentId },
-      include: { domain: true, uploadedBy: { select: { id: true, adminId: true } } } 
+      include: { domain: true, uploadedBy: { select: { id: true, adminId: true } } }
     });
-    
+
     if (!document || !document.isDeleted) {
       return res.status(404).json({ success: false, message: "Trashed document not found" });
     }
 
     let isAuthorized = true;
     if (req.user.role !== 'ADMIN') {
-      if (document.uploadedBy.id !== req.user.id && document.uploadedBy.adminId !== req.user.id) {
+      if (!document.uploadedBy || (document.uploadedBy.id !== req.user.id && document.uploadedBy.adminId !== req.user.id)) {
         isAuthorized = false;
       }
     }
@@ -718,7 +838,7 @@ export const runCleanupJobCore = async () => {
         if (canDeleteDb) {
           await prisma.document.delete({ where: { id: doc.id } });
           successCount++;
-          
+
           // Add Audit Log
           // Since it's an automated system action, we might not have a req.user
           // But we can insert a system audit log if the function createAuditLog allows it.
@@ -750,11 +870,11 @@ export const cleanupExpiredDocuments = async (req: AuthRequest, res: Response) =
     }
 
     const result = await runCleanupJobCore();
-    
+
     if (result.success) {
-      res.status(200).json({ 
-        success: true, 
-        message: `Cleanup finished. Deleted: ${result.successCount}, Failed: ${result.failureCount}` 
+      res.status(200).json({
+        success: true,
+        message: `Cleanup finished. Deleted: ${result.successCount}, Failed: ${result.failureCount}`
       });
     } else {
       res.status(500).json({ success: false, message: "Failed to run cleanup" });
@@ -876,7 +996,7 @@ export const updateDocumentAccess = async (req: AuthRequest, res: Response) => {
     });
 
     await createAuditLog(req.user.id, "UPDATE_DOCUMENT_ACCESS", document.name, document.domain.name);
-    
+
     // Fetch updated document to return
     const updatedDocument = await prisma.document.findUnique({
       where: { id },
@@ -884,6 +1004,7 @@ export const updateDocumentAccess = async (req: AuthRequest, res: Response) => {
         domain: true,
         academicYear: true,
         department: true,
+        subdomain: true,
         uploadedBy: { select: { name: true, email: true, avatar: true } },
         facultyAccess: true
       }
@@ -900,7 +1021,12 @@ export const updateDocumentAccess = async (req: AuthRequest, res: Response) => {
         domain: updatedDocument.domain.name,
         department: updatedDocument.department?.name,
         year: updatedDocument.academicYear?.year,
-        uploadedBy: updatedDocument.uploadedBy.name,
+        subdomain: updatedDocument.subdomain?.name || null,
+        yearOfStudy: updatedDocument.yearOfStudy,
+        semester: updatedDocument.semester,
+        branch: updatedDocument.branch,
+        section: updatedDocument.section,
+        uploadedBy: updatedDocument.uploadedBy?.name,
         isStarred: false, // The frontend handles starring separately
         filename: updatedDocument.name,
         accessType: updatedDocument.accessType,
@@ -915,3 +1041,199 @@ export const updateDocumentAccess = async (req: AuthRequest, res: Response) => {
     res.status(500).json({ success: false, message: "Failed to update document access" });
   }
 };
+
+export const updateDocument = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const { id } = req.params;
+    const {
+      name,
+      title,
+      domain,
+      subdomain,
+      academicYear,
+      branch,
+      department,
+      section,
+      yearOfStudy,
+      semester
+    } = req.body;
+
+    const document = await prisma.document.findUnique({
+      where: { id },
+      include: {
+        domain: true,
+        academicYear: true,
+        department: true,
+        subdomain: true
+      }
+    });
+
+    if (!document) {
+      return res.status(404).json({ success: false, message: "Document not found" });
+    }
+
+    const isAdmin = req.user.role?.toUpperCase() === 'ADMIN';
+    const isOwner = document.uploadedById === req.user.id;
+
+    if (!isAdmin && !isOwner) {
+      return res.status(403).json({ success: false, message: "Unauthorized to edit this document" });
+    }
+
+    const updateData: any = {};
+
+    // 1. Title / Name
+    const newTitle = (name || title || "").trim();
+    if (newTitle) {
+      const originalExt = document.name.includes('.') ? document.name.split('.').pop() : '';
+      let finalName = newTitle.replace(/[/\\]/g, "");
+      if (originalExt && !finalName.toLowerCase().endsWith(`.${originalExt.toLowerCase()}`)) {
+        finalName = `${finalName}.${originalExt}`;
+      }
+      updateData.name = finalName;
+    }
+
+    // 2. Domain
+    let targetDomainId = document.domainId;
+    let targetDomainName = document.domain.name;
+    if (domain !== undefined && domain !== null && domain !== "" && domain !== "All Domains") {
+      const domainRecord = await prisma.domain.findUnique({ where: { name: domain } });
+      if (!domainRecord) {
+        return res.status(400).json({ success: false, message: `Domain '${domain}' not found` });
+      }
+      targetDomainId = domainRecord.id;
+      targetDomainName = domainRecord.name;
+      updateData.domainId = domainRecord.id;
+    }
+
+    // 3. Subdomain
+    if (subdomain !== undefined) {
+      if (!subdomain || subdomain === "None" || subdomain === "All Sub Domains" || subdomain === "N/A") {
+        updateData.subdomainId = null;
+      } else {
+        const subdomainRecord = await prisma.subdomain.findFirst({
+          where: { name: subdomain, domainId: targetDomainId }
+        });
+        updateData.subdomainId = subdomainRecord ? subdomainRecord.id : null;
+      }
+    }
+
+    // 4. Academic Year
+    if (academicYear !== undefined) {
+      if (!academicYear || academicYear === "None" || academicYear === "All Academic Years" || academicYear === "N/A") {
+        updateData.academicYearId = null;
+      } else {
+        const yearRecord = await prisma.academicYear.findUnique({ where: { year: academicYear } });
+        updateData.academicYearId = yearRecord ? yearRecord.id : null;
+      }
+    }
+
+    // 5. Branch / Department
+    const effectiveBranch = branch !== undefined ? branch : department;
+    let targetDeptId = document.departmentId;
+    if (effectiveBranch !== undefined) {
+      if (!effectiveBranch || effectiveBranch === "None" || effectiveBranch === "All Branches" || effectiveBranch === "All Branch & Sections") {
+        updateData.departmentId = null;
+        updateData.branch = null;
+        targetDeptId = null;
+      } else {
+        const deptRecord = await prisma.department.findUnique({ where: { name: effectiveBranch } });
+        if (deptRecord) {
+          updateData.departmentId = deptRecord.id;
+          updateData.branch = effectiveBranch;
+          targetDeptId = deptRecord.id;
+        } else {
+          updateData.branch = effectiveBranch;
+        }
+      }
+    }
+
+    // 6. Section
+    if (section !== undefined) {
+      const cleanSection = (section && section !== "Overall Section" && section !== "All Sections" && section !== "N/A" && section !== "None") ? section.trim() : "";
+      if (cleanSection && targetDeptId) {
+        const sectionRecord = await prisma.section.findFirst({
+          where: { name: cleanSection, departmentId: targetDeptId }
+        });
+        updateData.sectionId = sectionRecord?.id || null;
+        updateData.section = cleanSection;
+      } else {
+        updateData.sectionId = null;
+        updateData.section = cleanSection || (section === "Overall Section" ? "Overall Section" : null);
+      }
+    }
+
+    // 7. Year of Study
+    if (yearOfStudy !== undefined) {
+      if (!yearOfStudy || yearOfStudy === "All Years of Study" || yearOfStudy === "None") {
+        updateData.yearOfStudy = null;
+      } else {
+        updateData.yearOfStudy = yearOfStudy.trim();
+      }
+    }
+
+    // 8. Semester
+    if (semester !== undefined) {
+      if (!semester || semester === "No Semester" || semester === "None" || semester === "All Semesters") {
+        updateData.semester = null;
+      } else {
+        updateData.semester = semester.trim();
+      }
+    }
+
+    await prisma.document.update({
+      where: { id },
+      data: updateData
+    });
+
+    await createAuditLog(req.user.id, "UPDATE_DOCUMENT", updateData.name || document.name, targetDomainName);
+
+    const updatedDocument = await prisma.document.findUnique({
+      where: { id },
+      include: {
+        domain: true,
+        academicYear: true,
+        department: true,
+        subdomain: true,
+        uploadedBy: { select: { name: true, email: true, avatar: true } },
+        facultyAccess: true
+      }
+    });
+
+    if (updatedDocument) {
+      const serializedDoc = {
+        id: updatedDocument.id,
+        name: updatedDocument.name,
+        type: updatedDocument.type,
+        size: updatedDocument.sizeBytes ? `${(Number(updatedDocument.sizeBytes) / (1024 * 1024)).toFixed(2)} MB` : "Unknown",
+        date: updatedDocument.createdAt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+        time: updatedDocument.createdAt.toLocaleTimeString("en-US", { hour: '2-digit', minute: '2-digit' }),
+        domain: updatedDocument.domain.name,
+        department: updatedDocument.department?.name,
+        year: updatedDocument.academicYear?.year,
+        subdomain: updatedDocument.subdomain?.name || null,
+        yearOfStudy: updatedDocument.yearOfStudy,
+        semester: updatedDocument.semester,
+        branch: updatedDocument.branch,
+        section: updatedDocument.section,
+        uploadedBy: updatedDocument.uploadedBy?.name,
+        uploadedById: updatedDocument.uploadedById,
+        isStarred: false,
+        status: updatedDocument.status,
+        filename: updatedDocument.name,
+        accessType: updatedDocument.accessType,
+        facultyAccess: updatedDocument.facultyAccess
+      };
+      return res.status(200).json({ success: true, message: "Document updated successfully", document: serializedDoc });
+    }
+
+    return res.status(200).json({ success: true, message: "Document updated successfully" });
+  } catch (error) {
+    console.error("Update Document Error:", error);
+    return res.status(500).json({ success: false, message: "Failed to update document" });
+  }
+};
+

@@ -9,7 +9,9 @@ import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 const app: Application = express();
 
 // Security Middleware
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 
 // CORS Configuration
 app.use(

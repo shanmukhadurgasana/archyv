@@ -177,7 +177,28 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
   }
 };
 
-import { uploadFileToDrive } from "../services/googleDrive.service";
+import { uploadFileToDrive, getFileStreamFromDrive } from "../services/googleDrive.service";
+
+export const getUserAvatar = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user || !user.avatar) {
+      return res.status(404).json({ message: "Avatar not found" });
+    }
+
+    const fileStream = await getFileStreamFromDrive(user.avatar) as any;
+    
+    // Fallback content type, browser will usually sniff the actual type
+    res.setHeader("Content-Type", "image/jpeg"); 
+    
+    fileStream.pipe(res);
+  } catch (error) {
+    console.error("Error fetching user avatar:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
 
 export const updateUserAvatar = async (req: AuthRequest, res: Response) => {
   try {

@@ -1,13 +1,15 @@
 "use client";
 
-import { Star, Trash2, CheckCircle, XCircle } from "lucide-react";
+import { Star, Trash2, CheckCircle, XCircle, MoreVertical } from "lucide-react";
 import Image from "next/image";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { Document } from "@/lib/mock-data";
 import clsx from "clsx";
 import { useAppContext } from "@/store/AppContext";
 import ConfirmationModal from "@/components/ui/ConfirmationModal";
+import AccessModal from "@/components/ui/AccessModal";
+import EditDocumentModal from "@/components/ui/EditDocumentModal";
 
 interface FileRowProps {
   file: Document;
@@ -21,16 +23,99 @@ export default function FileRow({ file, showActions = true, isTrash = false }: F
   
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showPermanentDeleteModal, setShowPermanentDeleteModal] = useState(false);
+  const [showAccessModal, setShowAccessModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ top: false });
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsMenuOpen(false);
+      }
+    };
+
+    if (isMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleEscape);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isMenuOpen]);
 
   const userStarredIds = currentUser ? starredDocs[currentUser.id] || [] : [];
   const isStarred = userStarredIds.includes(file.id);
 
   const handleOpenFile = async () => {
-    // Both mocked and real documents can be requested through the proxy endpoint.
-    // If the backend fails to load the mock file it will error gracefully, but 
-    // for Google Drive docs, this properly delegates securely to backend.
     const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
     window.open(`${baseUrl}/documents/${file.id}/view`, "_blank");
+  };
+
+  const handleNativeShare = async () => {
+    if (!navigator.share) {
+      alert("Sharing is not supported on this browser.");
+      return;
+    }
+
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+      const documentUrl = `${baseUrl}/documents/${file.id}/view`;
+      
+      let shareFile: File | null = null;
+
+      if (navigator.canShare) {
+        try {
+          const response = await fetch(documentUrl, { credentials: "include" });
+          const blob = await response.blob();
+          
+          const filename = file.name || "document";
+          const fileToShare = new File([blob], filename, { type: blob.type || "application/octet-stream" });
+          
+          if (navigator.canShare({ files: [fileToShare] })) {
+            shareFile = fileToShare;
+          }
+        } catch (e) {
+          console.warn("Could not fetch file for native sharing. Falling back to URL sharing.");
+        }
+      }
+
+      if (shareFile) {
+        await navigator.share({
+          files: [shareFile],
+          title: "Share Document",
+          text: `Sharing document from ARCHYV: ${file.name}`
+        });
+      } else {
+        await navigator.share({
+          title: "Share Document",
+          text: `Sharing document from ARCHYV: ${file.name}\n\n${documentUrl}`,
+          url: documentUrl
+        });
+      }
+    } catch (error: any) {
+      if (error.name !== 'AbortError') {
+        console.error("Error sharing:", error);
+      }
+    }
+  };
+
+  const toggleMenu = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isMenuOpen) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const isNearBottom = window.innerHeight - rect.bottom < 150;
+      setMenuPosition({ top: isNearBottom });
+    }
+    setIsMenuOpen(!isMenuOpen);
   };
 
   return (
@@ -46,7 +131,6 @@ export default function FileRow({ file, showActions = true, isTrash = false }: F
       }}
       onDragEnd={(e) => {
         if (e.dataTransfer.dropEffect === "none") {
-          // Unstar if dragged completely out of the drop zones while on the starred page
           if (pathname.includes('/starred') && isStarred) {
             toggleStar(file.id);
           }
@@ -61,7 +145,7 @@ export default function FileRow({ file, showActions = true, isTrash = false }: F
 
       <div className="flex-1 min-w-0 grid grid-cols-12 gap-4 items-center">
         <div className="col-span-12 sm:col-span-4 lg:col-span-3 min-w-0">
-          <div className="font-medium text-sm text-foreground truncate">{file.name}</div>
+          <div className="font-medium text-sm text-foreground truncate" title={file.name}>{file.name}</div>
           <div className="text-xs text-gray-500 truncate flex items-center gap-2">
             <span>{isTrash ? file.department : `/${file.domain}/${file.department || 'General'}`}</span>
             {file.status === 'PENDING' && (
@@ -108,7 +192,7 @@ export default function FileRow({ file, showActions = true, isTrash = false }: F
           )}
         </div>
 
-        <div className={clsx("flex items-center justify-end gap-3", "col-span-12 sm:col-span-2")}>
+        <div className={clsx("flex items-center justify-end gap-2", "col-span-12 sm:col-span-2")}>
           {isTrash ? (
             <>
               <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); restoreDocument(file.id); }} className="flex items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors">
@@ -122,24 +206,68 @@ export default function FileRow({ file, showActions = true, isTrash = false }: F
             </>
           ) : showActions && (
             <>
-              <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleStar(file.id); }} className="text-gray-300 hover:text-[var(--archyv-accent)] transition-colors">
+              <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleStar(file.id); }} className="text-gray-300 hover:text-[var(--archyv-accent)] transition-colors p-1">
                 <Star className={clsx("w-4 h-4", isStarred && "fill-[var(--archyv-accent)] text-[var(--archyv-accent)]")} />
               </button>
-              {currentUser?.role?.toLowerCase() === 'admin' && file.status === 'PENDING' && (
-                <>
-                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); approveDocument(file.id); }} className="text-gray-300 hover:text-green-600 transition-colors" title="Approve">
-                    <CheckCircle className="w-4 h-4" />
-                  </button>
-                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); declineDocument(file.id); }} className="text-gray-300 hover:text-orange-500 transition-colors" title="Decline">
-                    <XCircle className="w-4 h-4" />
-                  </button>
-                </>
-              )}
-              {currentUser?.role?.toLowerCase() === 'admin' && (
-                <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowDeleteModal(true); }} className="text-gray-300 hover:text-red-500 transition-colors" title="Delete">
-                  <Trash2 className="w-4 h-4" />
+              
+              <div className="relative" ref={menuRef} onClick={(e) => e.stopPropagation()}>
+                <button
+                  onClick={toggleMenu}
+                  className="text-gray-300 group-hover:text-gray-600 transition-colors p-1 rounded-md hover:bg-gray-100"
+                  aria-label="More actions"
+                >
+                  <MoreVertical className="w-4 h-4" />
                 </button>
-              )}
+
+                {isMenuOpen && (
+                  <div className={`absolute ${menuPosition.top ? 'bottom-full mb-1' : 'top-full mt-1'} right-0 w-36 bg-white border border-[var(--border)] rounded-lg shadow-lg overflow-hidden z-50 py-1`} onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsMenuOpen(false); setShowEditModal(true); }}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsMenuOpen(false); handleNativeShare(); }}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      Share
+                    </button>
+                    {currentUser?.role?.toLowerCase() === 'admin' && (
+                      <button
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsMenuOpen(false); setShowAccessModal(true); }}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                      >
+                        Access
+                      </button>
+                    )}
+                    {currentUser?.role?.toLowerCase() === 'admin' && file.status === 'PENDING' && (
+                      <>
+                        <button
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsMenuOpen(false); approveDocument(file.id); }}
+                          className="w-full text-left px-4 py-2 text-sm text-green-600 hover:bg-green-50 transition-colors"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); declineDocument(file.id); }}
+                          className="w-full text-left px-4 py-2 text-sm text-orange-600 hover:bg-orange-50 transition-colors"
+                        >
+                          Decline
+                        </button>
+                      </>
+                    )}
+                    {currentUser?.role?.toLowerCase() === 'admin' && (
+                      <button
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsMenuOpen(false); setShowDeleteModal(true); }}
+                        className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </>
           )}
         </div>
@@ -165,6 +293,18 @@ export default function FileRow({ file, showActions = true, isTrash = false }: F
           setShowPermanentDeleteModal(false);
         }}
         onCancel={() => setShowPermanentDeleteModal(false)}
+      />
+
+      <AccessModal
+        isOpen={showAccessModal}
+        document={file}
+        onClose={() => setShowAccessModal(false)}
+      />
+
+      <EditDocumentModal
+        isOpen={showEditModal}
+        document={file}
+        onClose={() => setShowEditModal(false)}
       />
     </div>
   );
