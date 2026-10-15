@@ -1,4 +1,4 @@
-import { Star, Clock, Trash2, CheckCircle, XCircle, MoreVertical } from "lucide-react";
+import { Star, Clock, Trash2, CheckCircle, XCircle, MoreVertical, Download, ExternalLink, Pencil, Eye, Share2, Shield, FileSpreadsheet, FileText, CheckCheck } from "lucide-react";
 import Image from "next/image";
 import { useState, useRef, useEffect } from "react";
 import { usePathname } from "next/navigation";
@@ -8,6 +8,9 @@ import { useAppContext } from "@/store/AppContext";
 import ConfirmationModal from "@/components/ui/ConfirmationModal";
 import AccessModal from "@/components/ui/AccessModal";
 import EditDocumentModal from "@/components/ui/EditDocumentModal";
+import DocumentEditorModal from "@/components/ui/DocumentEditorModal";
+
+import { triggerFileDownload, getFileCategory } from "@/lib/downloadHelper";
 
 interface FileCardProps {
   file: Document;
@@ -20,8 +23,10 @@ export default function FileCard({ file, isTrash = false }: FileCardProps) {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showAccessModal, setShowAccessModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showDocEditor, setShowDocEditor] = useState(false);
+  const [isRenameAndApprove, setIsRenameAndApprove] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [menuPosition, setMenuPosition] = useState({ top: false });
+  const [menuPosition, setMenuPosition] = useState({ top: false, alignRight: true, shiftRight: 0 });
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -46,12 +51,46 @@ export default function FileCard({ file, isTrash = false }: FileCardProps) {
     };
   }, [isMenuOpen]);
   
-  const userStarredIds = currentUser ? starredDocs[currentUser.id] || [] : [];
-  const isStarred = userStarredIds.includes(file.id);
+  const userStarredIds = currentUser ? starredDocs[currentUser.id] : undefined;
+  const isStarred = userStarredIds !== undefined ? userStarredIds.includes(file.id) : Boolean(file.isStarred);
 
-  const handleOpenFile = async () => {
+  const isAdmin = currentUser?.role?.toLowerCase() === 'admin';
+  const isPendingAdmin = isAdmin && (pathname.includes('/pending') || file.status === 'PENDING');
+  const isUploader = Boolean(
+    (currentUser?.id && file.uploadedById === currentUser.id) ||
+    (currentUser?.name && file.uploadedBy === currentUser.name) ||
+    (currentUser?.adminId && file.uploadedBy === currentUser.adminId)
+  );
+  const isFacultyGranted = file.accessType === 'ALL_FACULTY' || 
+    (file.accessType === 'SELECT_FACULTY' && (file.facultyAccess || []).some((fa: any) => (fa.facultyId || fa) === currentUser?.id));
+  const canEdit = isAdmin || isUploader || Boolean(file.canEdit) || isFacultyGranted;
+  
+  const { isCsvOrExcel, canOpenInNewTab } = getFileCategory(file.name, file.type, file.mimeType);
+
+  const handleOpenFile = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
-    window.open(`${baseUrl}/documents/${file.id}/view`, "_blank");
+
+    if (isCsvOrExcel) {
+      setShowDocEditor(true);
+    } else if (canOpenInNewTab) {
+      window.open(`${baseUrl}/documents/${file.id}/view?inline=true`, "_blank");
+    } else {
+      const newTab = window.open(`${baseUrl}/documents/${file.id}/view`, "_blank");
+      if (!newTab || newTab.closed || typeof newTab.closed === 'undefined') {
+        triggerFileDownload(file);
+      }
+    }
+  };
+
+  const handleDownloadFile = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsMenuOpen(false);
+    triggerFileDownload(file);
   };
 
   const handleNativeShare = async () => {
@@ -106,9 +145,19 @@ export default function FileCard({ file, isTrash = false }: FileCardProps) {
     e.preventDefault();
     e.stopPropagation();
     if (!isMenuOpen) {
-      const rect = e.currentTarget.getBoundingClientRect();
-      const isNearBottom = window.innerHeight - rect.bottom < 150;
-      setMenuPosition({ top: isNearBottom });
+      const buttonRect = e.currentTarget.getBoundingClientRect();
+      const isNearBottom = window.innerHeight - buttonRect.bottom < 260;
+
+      // Keep menu from extending past the container's left boundary (with padding)
+      const container = e.currentTarget.closest<HTMLElement>(".border.rounded-2xl") || document.querySelector("main");
+      const containerRect = container?.getBoundingClientRect();
+      const minLeft = (containerRect ? containerRect.left : 0) + 16;
+
+      const menuWidth = 208; // w-52
+      const menuLeftIfRightAligned = buttonRect.right - menuWidth;
+      const shiftRight = menuLeftIfRightAligned < minLeft ? Math.ceil(minLeft - menuLeftIfRightAligned) : 0;
+
+      setMenuPosition({ top: isNearBottom, alignRight: true, shiftRight });
     }
     setIsMenuOpen(!isMenuOpen);
   };
@@ -125,16 +174,11 @@ export default function FileCard({ file, isTrash = false }: FileCardProps) {
           }));
           e.dataTransfer.effectAllowed = "move";
         }}
-        onDragEnd={(e) => {
-          if (e.dataTransfer.dropEffect === "none") {
-            // Unstar if dragged completely out of the drop zones while on the starred page
-            if (pathname.includes('/starred') && isStarred) {
-              toggleStar(file.id);
-            }
-          }
-        }}
         onClick={handleOpenFile}
-        className="bg-white border border-[var(--border)] rounded-2xl p-5 flex flex-col hover:shadow-sm transition-shadow group relative cursor-pointer"
+        className={clsx(
+          "bg-white border border-[var(--border)] rounded-2xl p-5 flex flex-col hover:shadow-sm transition-shadow group cursor-pointer",
+          isMenuOpen ? "relative z-40" : "relative z-0"
+        )}
       >
       <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
         {file.status === 'PENDING' && (
@@ -143,10 +187,19 @@ export default function FileCard({ file, isTrash = false }: FileCardProps) {
         {file.status === 'REJECTED' && (
           <span className="bg-red-100 text-red-800 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase shadow-sm">Declined</span>
         )}
+        {!isAdmin && !isTrash && file.status === 'APPROVED' && (
+          canEdit ? (
+            <span className="bg-[var(--archyv-accent)]/20 text-foreground border border-[var(--archyv-accent)]/40 text-[10px] font-semibold px-2 py-0.5 rounded shadow-sm">Edit</span>
+          ) : (
+            <span className="inline-flex items-center justify-center p-0.5" title="View Only">
+              <Image src="/view-eye.png" alt="View Only" width={18} height={10} className="w-4.5 h-auto object-contain inline-block" />
+            </span>
+          )
+        )}
         {isTrash ? (
           <div className="flex items-center gap-2">
             <button 
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); restoreDocument(file.id); }} 
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); restoreDocument(file.id, file); }} 
               className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full bg-white shadow-sm border border-gray-200 text-gray-700 hover:text-[var(--archyv-accent)] hover:border-[var(--archyv-accent)]/30 transition-all"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
@@ -156,7 +209,7 @@ export default function FileCard({ file, isTrash = false }: FileCardProps) {
         ) : (
           <div className="flex items-center gap-2">
             <button 
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleStar(file.id); }}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleStar(file.id); }} 
               className="text-gray-300 group-hover:text-gray-400"
             >
               <Star className={clsx("w-5 h-5 transition-colors", isStarred ? "fill-[var(--archyv-accent)] text-[var(--archyv-accent)]" : "hover:text-[var(--archyv-accent)]")} />
@@ -172,50 +225,303 @@ export default function FileCard({ file, isTrash = false }: FileCardProps) {
               </button>
               
               {isMenuOpen && (
-                <div className={`absolute ${menuPosition.top ? 'bottom-full mb-1' : 'top-full mt-1'} right-0 w-36 bg-white border border-[var(--border)] rounded-lg shadow-lg overflow-hidden z-50 py-1`} onClick={(e) => e.stopPropagation()}>
-                  <button
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsMenuOpen(false); setShowEditModal(true); }}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors font-medium"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsMenuOpen(false); handleNativeShare(); }}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                  >
-                    Share
-                  </button>
-                  {currentUser?.role?.toLowerCase() === 'admin' && (
-                    <button
-                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsMenuOpen(false); setShowAccessModal(true); }}
-                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                    >
-                      Access
-                    </button>
-                  )}
-                  {currentUser?.role?.toLowerCase() === 'admin' && file.status === 'PENDING' && (
-                    <>
-                      <button
-                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsMenuOpen(false); approveDocument(file.id); }}
-                        className="w-full text-left px-4 py-2 text-sm text-green-600 hover:bg-green-50 transition-colors"
-                      >
-                        Approve
-                      </button>
-                      <button
-                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsMenuOpen(false); declineDocument(file.id); }}
-                        className="w-full text-left px-4 py-2 text-sm text-orange-600 hover:bg-orange-50 transition-colors"
-                      >
-                        Decline
-                      </button>
-                    </>
-                  )}
-                  {currentUser?.role?.toLowerCase() === 'admin' && (
-                    <button
-                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsMenuOpen(false); setShowDeleteModal(true); }}
-                      className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
-                    >
-                      Delete
-                    </button>
+                <div 
+                  className={clsx(
+                    "absolute w-52 bg-white border border-[var(--border)] rounded-lg shadow-lg overflow-hidden z-50 py-1",
+                    menuPosition.top ? "bottom-full mb-1" : "top-full mt-1",
+                    "right-0"
+                  )} 
+                  style={menuPosition.shiftRight > 0 ? { right: -menuPosition.shiftRight } : undefined}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {isAdmin ? (
+                    isPendingAdmin ? (
+                      /* 2) files in admin/pending -> approve, decline, rename and approve, delete */
+                      <>
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setIsMenuOpen(false);
+                            approveDocument(file.id);
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
+                        >
+                          <CheckCircle className="w-3.5 h-3.5 text-gray-500" />
+                          Approve
+                        </button>
+
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setIsMenuOpen(false);
+                            declineDocument(file.id);
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
+                        >
+                          <XCircle className="w-3.5 h-3.5 text-gray-500" />
+                          Decline
+                        </button>
+
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setIsMenuOpen(false);
+                            setIsRenameAndApprove(true);
+                            setShowEditModal(true);
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
+                        >
+                          <CheckCheck className="w-3.5 h-3.5 text-gray-500" />
+                          Rename and Approve
+                        </button>
+
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setIsMenuOpen(false);
+                            setShowDeleteModal(true);
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                          Delete
+                        </button>
+                      </>
+                    ) : (
+                      /* 1) files in admin dashboard -> open in newtab/spreadsheet(with edit access), download, rename, share, access, delete */
+                      <>
+                        {isCsvOrExcel ? (
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setIsMenuOpen(false);
+                              setShowDocEditor(true);
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors font-medium flex items-center gap-2"
+                          >
+                            <FileSpreadsheet className="w-3.5 h-3.5 text-gray-500" />
+                            Open Spreadsheet
+                          </button>
+                        ) : canOpenInNewTab ? (
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setIsMenuOpen(false);
+                              const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+                              window.open(`${baseUrl}/documents/${file.id}/view?inline=true`, "_blank");
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors font-medium flex items-center gap-2"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5 text-gray-500" />
+                            Open in New Tab
+                          </button>
+                        ) : null}
+
+                        <button
+                          onClick={handleDownloadFile}
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors font-medium flex items-center gap-2"
+                        >
+                          <Download className="w-3.5 h-3.5 text-gray-500" />
+                          Download
+                        </button>
+
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setIsMenuOpen(false);
+                            setIsRenameAndApprove(false);
+                            setShowEditModal(true);
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors font-medium flex items-center gap-2"
+                        >
+                          <Pencil className="w-3.5 h-3.5 text-gray-500" />
+                          Rename
+                        </button>
+
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setIsMenuOpen(false);
+                            handleNativeShare();
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
+                        >
+                          <Share2 className="w-3.5 h-3.5 text-gray-500" />
+                          Share
+                        </button>
+
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setIsMenuOpen(false);
+                            setShowAccessModal(true);
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
+                        >
+                          <Shield className="w-3.5 h-3.5 text-gray-500" />
+                          Access
+                        </button>
+
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setIsMenuOpen(false);
+                            setShowDeleteModal(true);
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Delete
+                        </button>
+                      </>
+                    )
+                  ) : (
+                    /* Faculty Dashboard */
+                    canEdit ? (
+                      /* 4) in faculty dashboard files with edit access -> open in newtab/spreadsheet(with edit access), download, rename, share */
+                      <>
+                        {isCsvOrExcel ? (
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setIsMenuOpen(false);
+                              setShowDocEditor(true);
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors font-medium flex items-center gap-2"
+                          >
+                            <FileSpreadsheet className="w-3.5 h-3.5 text-gray-500" />
+                            Open Spreadsheet
+                          </button>
+                        ) : canOpenInNewTab ? (
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setIsMenuOpen(false);
+                              const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+                              window.open(`${baseUrl}/documents/${file.id}/view?inline=true`, "_blank");
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors font-medium flex items-center gap-2"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5 text-gray-500" />
+                            Open in New Tab
+                          </button>
+                        ) : null}
+
+                        <button
+                          onClick={handleDownloadFile}
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors font-medium flex items-center gap-2"
+                        >
+                          <Download className="w-3.5 h-3.5 text-gray-500" />
+                          Download
+                        </button>
+
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setIsMenuOpen(false);
+                            setIsRenameAndApprove(false);
+                            setShowEditModal(true);
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors font-medium flex items-center gap-2"
+                        >
+                          <Pencil className="w-3.5 h-3.5 text-gray-500" />
+                          Rename
+                        </button>
+
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setIsMenuOpen(false);
+                            handleNativeShare();
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
+                        >
+                          <Share2 className="w-3.5 h-3.5 text-gray-500" />
+                          Share
+                        </button>
+                      </>
+                    ) : (
+                      /* 3) in faculty dashboard file swith only view access -> view in newtab/spread sheet, download, view details, share */
+                      <>
+                        {isCsvOrExcel ? (
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setIsMenuOpen(false);
+                              setShowDocEditor(true);
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors font-medium flex items-center gap-2"
+                          >
+                            <FileSpreadsheet className="w-3.5 h-3.5 text-gray-500" />
+                            View Spreadsheet
+                          </button>
+                        ) : canOpenInNewTab ? (
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setIsMenuOpen(false);
+                              const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+                              window.open(`${baseUrl}/documents/${file.id}/view?inline=true`, "_blank");
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors font-medium flex items-center gap-2"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5 text-gray-500" />
+                            View in New Tab
+                          </button>
+                        ) : null}
+
+                        <button
+                          onClick={handleDownloadFile}
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors font-medium flex items-center gap-2"
+                        >
+                          <Download className="w-3.5 h-3.5 text-gray-500" />
+                          Download
+                        </button>
+
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setIsMenuOpen(false);
+                            setIsRenameAndApprove(false);
+                            setShowEditModal(true);
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-gray-500" />
+                          View Details
+                        </button>
+
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setIsMenuOpen(false);
+                            handleNativeShare();
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
+                        >
+                          <Share2 className="w-3.5 h-3.5 text-gray-500" />
+                          Share
+                        </button>
+                      </>
+                    )
                   )}
                 </div>
               )}
@@ -269,6 +575,13 @@ export default function FileCard({ file, isTrash = false }: FileCardProps) {
         isOpen={showEditModal}
         document={file}
         onClose={() => setShowEditModal(false)}
+        isRenameAndApprove={isRenameAndApprove}
+      />
+      <DocumentEditorModal
+        isOpen={showDocEditor}
+        document={file}
+        onClose={() => setShowDocEditor(false)}
+        onOpenTitleEdit={() => setShowEditModal(true)}
       />
     </>
   );

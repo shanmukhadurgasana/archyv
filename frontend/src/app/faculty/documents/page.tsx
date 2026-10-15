@@ -4,10 +4,9 @@ import { useState } from "react";
 import PageHeader from "@/components/ui/PageHeader";
 import FileCard from "@/components/ui/FileCard";
 import FileRow from "@/components/ui/FileRow";
-import Pagination from "@/components/ui/Pagination";
 import SortDropdown from "@/components/ui/SortDropdown";
 import { LayoutGrid, List, ChevronDown, ChevronRight, Folder } from "lucide-react";
-import { useDataView, SortOption } from "@/hooks/useDataView";
+import { useDataView } from "@/hooks/useDataView";
 import clsx from "clsx";
 import { useAppContext } from "@/store/AppContext";
 
@@ -16,7 +15,7 @@ export default function FacultyDocuments() {
 
   const { documents, globalSearchQuery, isDataLoading, domains: domainObjs } = useAppContext();
   const domains = [...domainObjs].map(d => d.name).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
-  const allFiles = documents.filter(f => !f.isDeleted);
+  const allFiles = documents.filter(f => !f.isDeleted && f.status === "APPROVED");
 
   const toggleDomain = (domain: string) => {
     setExpandedDomains(prev => ({ ...prev, [domain]: !prev[domain] }));
@@ -24,11 +23,9 @@ export default function FacultyDocuments() {
 
   const {
     sortBy, setSortBy,
-    currentPage, totalPages, handlePageChange,
-    itemsPerPage, setItemsPerPage,
     viewMode, setViewMode,
-    paginatedData, filteredData, totalItems
-  } = useDataView(allFiles, "Newest first", 10);
+    sortedData
+  } = useDataView(allFiles, "Newest first", 10000);
 
   return (
     <div>
@@ -63,16 +60,15 @@ export default function FacultyDocuments() {
         ) : (
           <>
           {domains.map((domain) => {
-          // We use paginatedData to show only files that belong to this domain on the CURRENT page
-          const domainFiles = paginatedData.filter(f => f.domain === domain);
-          // And we also count the total files for this domain just for the header badge using filteredData
-          const totalDomainFiles = filteredData.filter(f => f.domain === domain);
+          // Show all files that belong to this domain, sorted according to active sort option
+          const domainFiles = sortedData.filter(f => f.domain === domain);
+          const totalDomainFiles = domainFiles.length;
           const isExpanded = expandedDomains[domain];
           
-          if (globalSearchQuery && totalDomainFiles.length === 0) return null;
+          if (globalSearchQuery && totalDomainFiles === 0) return null;
 
           return (
-            <div key={domain} className="bg-white border border-[var(--border)] rounded-2xl overflow-hidden">
+            <div key={domain} className={clsx("bg-white border border-[var(--border)] rounded-2xl", isExpanded ? "overflow-visible" : "overflow-hidden")}>
               <button 
                 onClick={() => toggleDomain(domain)}
                 className="w-full flex items-center justify-between p-5 hover:bg-gray-50 transition-colors"
@@ -82,7 +78,7 @@ export default function FacultyDocuments() {
                     <Folder className="w-6 h-6 fill-[var(--archyv-accent)]/20" strokeWidth={1.5} />
                   </div>
                   <span className="font-semibold text-foreground">{domain}</span>
-                  <span className="text-sm text-gray-400">{totalDomainFiles.length} Files</span>
+                  <span className="text-sm text-gray-400">{totalDomainFiles} Files</span>
                 </div>
                 <div className="text-gray-400">
                   {isExpanded ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
@@ -118,7 +114,7 @@ export default function FacultyDocuments() {
                     </>
                   ) : (
                     <div className="text-center py-8 text-sm text-gray-500">
-                      No documents for this domain on the current page.
+                      No documents found for this domain.
                     </div>
                   )}
                 </div>
@@ -126,15 +122,6 @@ export default function FacultyDocuments() {
             </div>
           );
         })}
-        <Pagination 
-          currentPage={currentPage}
-          totalPages={totalPages}
-          onPageChange={handlePageChange}
-          totalItems={totalItems}
-          itemsPerPage={itemsPerPage}
-          onItemsPerPageChange={setItemsPerPage}
-          label="documents"
-        />
         </>
         )}
       </div>

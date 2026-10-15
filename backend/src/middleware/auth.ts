@@ -16,7 +16,10 @@ export interface AuthRequest extends Request {
 }
 
 export const requireAuth = async (req: AuthRequest, res: Response, next: NextFunction) => {
-  const token = req.cookies.jwt;
+  const token = req.cookies?.jwt || 
+                (req.query?.token as string) || 
+                (req.query?.ticket as string) || 
+                (req.headers?.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7) : undefined);
 
   if (!token) {
     return res.status(401).json({ message: "Unauthorized: No token provided" });

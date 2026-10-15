@@ -101,12 +101,11 @@ export const createUser = async (req: AuthRequest, res: Response) => {
       adminId: newUser.adminId
     };
 
-    res.status(201).json({ user: safeUser });
-
-    // Create Audit Log
+    // Create Audit Log non-blocking
     if (req.user) {
-      await createAuditLog(req.user.id, "CREATE_USER", newUser.id, "System");
+      createAuditLog(req.user.id, "CREATE_USER", newUser.id, "System").catch(console.error);
     }
+    return res.status(201).json({ user: safeUser });
   } catch (error) {
     console.error("Error creating user:", error);
     res.status(500).json({ message: "Internal server error" });
@@ -165,12 +164,11 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
       status: updatedUser.status
     };
 
-    res.status(200).json({ user: safeUser });
-
-    // Create Audit Log
+    // Create Audit Log non-blocking
     if (req.user) {
-      await createAuditLog(req.user.id, "UPDATE_USER", updatedUser.id, "System");
+      createAuditLog(req.user.id, "UPDATE_USER", updatedUser.id, "System").catch(console.error);
     }
+    return res.status(200).json({ user: safeUser });
   } catch (error) {
     console.error("Error updating user:", error);
     res.status(500).json({ message: "Internal server error" });
@@ -251,13 +249,11 @@ export const deleteUser = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    await prisma.user.delete({ where: { id } });
-    res.status(200).json({ message: "User deleted successfully" });
-
-    // Create Audit Log
+    // Create Audit Log non-blocking
     if (req.user) {
-      await createAuditLog(req.user.id, "DELETE_USER", id, "System");
+      createAuditLog(req.user.id, "DELETE_USER", id, "System").catch(console.error);
     }
+    return res.status(200).json({ message: "User deleted successfully" });
   } catch (error) {
     console.error("Error deleting user:", error);
     res.status(500).json({ message: "Internal server error" });

@@ -11,7 +11,13 @@ const createPrismaClient = () => {
     throw new Error("DATABASE_URL is required to initialize Prisma Client");
   }
 
-  const pool = new Pool({ connectionString });
+  const pool = new Pool({
+    connectionString,
+    max: 20,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000,
+    keepAlive: true,
+  });
   const adapter = new PrismaPg(pool);
   
   return new PrismaClient({ adapter });

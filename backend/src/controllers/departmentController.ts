@@ -49,10 +49,10 @@ export const createDepartment = async (req: AuthRequest, res: Response) => {
     });
 
     if (req.user) {
-      await createAuditLog(req.user.id, "CREATE_DEPARTMENT", sanitizedName);
+      createAuditLog(req.user.id, "CREATE_DEPARTMENT", sanitizedName).catch(console.error);
     }
 
-    res.status(201).json({ success: true, department: newDepartment });
+    return res.status(201).json({ success: true, department: newDepartment });
   } catch (error) {
     console.error("Create department error:", error);
     res.status(500).json({ success: false, message: "Failed to create department" });
@@ -92,10 +92,10 @@ export const updateDepartment = async (req: AuthRequest, res: Response) => {
     });
 
     if (req.user) {
-      await createAuditLog(req.user.id, "UPDATE_DEPARTMENT", sanitizedName);
+      createAuditLog(req.user.id, "UPDATE_DEPARTMENT", sanitizedName).catch(console.error);
     }
 
-    res.status(200).json({ success: true, department: updatedDepartment });
+    return res.status(200).json({ success: true, department: updatedDepartment });
   } catch (error) {
     console.error("Update department error:", error);
     res.status(500).json({ success: false, message: "Failed to update department" });
@@ -120,10 +120,10 @@ export const deleteDepartment = async (req: AuthRequest, res: Response) => {
     await prisma.department.delete({ where: { id } });
 
     if (req.user) {
-      await createAuditLog(req.user.id, "DELETE_DEPARTMENT", department.name);
+      createAuditLog(req.user.id, "DELETE_DEPARTMENT", department.name).catch(console.error);
     }
 
-    res.status(200).json({ success: true, message: "Department deleted successfully" });
+    return res.status(200).json({ success: true, message: "Department deleted successfully" });
   } catch (error) {
     console.error("Delete department error:", error);
     res.status(500).json({ success: false, message: "Failed to delete department" });
@@ -170,10 +170,10 @@ export const createSection = async (req: AuthRequest, res: Response) => {
     });
 
     if (req.user) {
-      await createAuditLog(req.user.id, "CREATE_SECTION", `${department.name} - ${sanitizedName}`);
+      createAuditLog(req.user.id, "CREATE_SECTION", `${department.name} - ${sanitizedName}`).catch(console.error);
     }
 
-    res.status(201).json({ success: true, section });
+    return res.status(201).json({ success: true, section });
   } catch (error) {
     console.error("Create section error:", error);
     res.status(500).json({ success: false, message: "Failed to create section" });
@@ -218,10 +218,10 @@ export const updateSection = async (req: AuthRequest, res: Response) => {
     });
 
     if (req.user) {
-      await createAuditLog(req.user.id, "UPDATE_SECTION", sanitizedName);
+      createAuditLog(req.user.id, "UPDATE_SECTION", sanitizedName).catch(console.error);
     }
 
-    res.status(200).json({ success: true, section: updatedSection });
+    return res.status(200).json({ success: true, section: updatedSection });
   } catch (error) {
     console.error("Update section error:", error);
     res.status(500).json({ success: false, message: "Failed to update section" });
@@ -245,10 +245,10 @@ export const deleteSection = async (req: AuthRequest, res: Response) => {
     await prisma.section.delete({ where: { id: targetId } });
 
     if (req.user) {
-      await createAuditLog(req.user.id, "DELETE_SECTION", section.name);
+      createAuditLog(req.user.id, "DELETE_SECTION", section.name).catch(console.error);
     }
 
-    res.status(200).json({ success: true, message: "Section deleted successfully" });
+    return res.status(200).json({ success: true, message: "Section deleted successfully" });
   } catch (error) {
     console.error("Delete section error:", error);
     res.status(500).json({ success: false, message: "Failed to delete section" });

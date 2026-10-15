@@ -13,6 +13,7 @@ interface CustomDropdownProps {
   multiSelect?: boolean;
   placeholder?: string;
   disableSort?: boolean;
+  disabled?: boolean;
 }
 
 export default function CustomDropdown({ 
@@ -24,7 +25,8 @@ export default function CustomDropdown({
   fullWidth, 
   multiSelect, 
   placeholder = "Select...",
-  disableSort = false
+  disableSort = false,
+  disabled = false
 }: CustomDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -60,8 +62,9 @@ export default function CustomDropdown({
     <div className={`relative ${fullWidth ? "w-full" : ""}`} ref={dropdownRef}>
       <button 
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className={`flex items-center gap-2 bg-white border border-[var(--border)] rounded-lg px-3 py-1.5 shadow-sm hover:border-[var(--archyv-accent)]/50 transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--archyv-accent)]/50 h-[38px] ${fullWidth ? "w-full justify-between" : ""}`}
+        disabled={disabled}
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        className={`flex items-center gap-2 border border-[var(--border)] rounded-lg px-3 py-1.5 shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--archyv-accent)]/50 h-[38px] ${fullWidth ? "w-full justify-between" : ""} ${disabled ? "bg-gray-100 text-gray-400 cursor-not-allowed" : "bg-white hover:border-[var(--archyv-accent)]/50"}`}
       >
         <div className="flex items-center gap-2 flex-1 min-w-0">
           {label && <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider shrink-0">{label}</span>}

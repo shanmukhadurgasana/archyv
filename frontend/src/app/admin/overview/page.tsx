@@ -12,7 +12,7 @@ import FileCard from "@/components/ui/FileCard";
 import { ArrowLeft } from "lucide-react";
 export default function AdminOverview() {
   const { dashboardStats, documents, domains, academicYears, departments, isDataLoading } = useAppContext();
-  const allFiles = documents.filter((f: any) => !f.isDeleted);
+  const allFiles = documents.filter((f: any) => !f.isDeleted && f.status === "APPROVED");
 
   const [path, setPath] = useState<string[]>([]);
   // path[0] = domain, path[1] = academicYear, path[2] = yearOfStudy, path[3] = branch, path[4] = section, path[5] = semester, path[6] = subdomain

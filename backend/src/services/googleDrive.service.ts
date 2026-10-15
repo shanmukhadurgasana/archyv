@@ -82,6 +82,43 @@ export const getFileStreamFromDrive = async (fileId: string) => {
 };
 
 /**
+ * Updates an existing file buffer in Google Drive.
+ * @param fileId The Google Drive file ID.
+ * @param fileBuffer The updated file buffer.
+ * @param mimeType Optional mime type.
+ */
+export const updateFileInDrive = async (
+  fileId: string,
+  fileBuffer: Buffer,
+  mimeType: string = "application/octet-stream"
+) => {
+  try {
+    const bufferStream = new stream.PassThrough();
+    bufferStream.end(fileBuffer);
+
+    const media = {
+      mimeType,
+      body: bufferStream,
+    };
+
+    const response = await drive.files.update({
+      fileId,
+      media: media,
+      fields: "id, mimeType, webViewLink",
+    });
+
+    return {
+      fileId: response.data.id,
+      mimeType: response.data.mimeType,
+      webViewLink: response.data.webViewLink,
+    };
+  } catch (error) {
+    console.error("Google Drive update error:", error);
+    throw error;
+  }
+};
+
+/**
  * Deletes a file from Google Drive.
  * @param fileId The Google Drive file ID.
  */
@@ -101,3 +138,4 @@ export const deleteFileFromDrive = async (fileId: string) => {
     return { success: false, error };
   }
 };
+

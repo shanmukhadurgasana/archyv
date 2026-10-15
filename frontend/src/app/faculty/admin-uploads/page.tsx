@@ -14,7 +14,12 @@ export default function FacultyAdminUploads() {
   const { documents, currentUser, isDataLoading } = useAppContext();
   
   // Filter for files uploaded by admin and not deleted
-  const adminFiles = documents.filter(f => !f.isDeleted && f.uploadedById !== currentUser?.id);
+  const adminFiles = documents.filter(f => 
+    !f.isDeleted && 
+    (f.status === 'APPROVED' || !f.status) &&
+    f.uploadedById !== currentUser?.id && 
+    (f.uploaderRole?.toUpperCase() === 'ADMIN' || !f.uploaderRole)
+  );
 
   const {
     sortBy, setSortBy,

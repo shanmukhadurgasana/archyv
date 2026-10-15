@@ -33,6 +33,7 @@ export interface Document {
   domain: string;
   department?: string;
   uploadedBy?: string;
+  uploaderRole?: string;
   uploadedById?: string;
   isStarred: boolean;
   isDeleted?: boolean;
@@ -49,6 +50,8 @@ export interface Document {
   semester?: string;
   branch?: string;
   section?: string;
+  canEdit?: boolean;
+  mimeType?: string;
 }
 
 export const mockFacultyUser: User = {

@@ -47,10 +47,10 @@ export const createDomain = async (req: AuthRequest, res: Response) => {
     });
 
     if (req.user) {
-      await createAuditLog(req.user.id, "CREATE_DOMAIN", sanitizedName);
+      createAuditLog(req.user.id, "CREATE_DOMAIN", sanitizedName).catch(console.error);
     }
 
-    res.status(201).json({ success: true, domain: newDomain });
+    return res.status(201).json({ success: true, domain: newDomain });
   } catch (error) {
     console.error("Create domain error:", error);
     res.status(500).json({ success: false, message: "Failed to create domain" });
@@ -90,10 +90,10 @@ export const updateDomain = async (req: AuthRequest, res: Response) => {
     });
 
     if (req.user) {
-      await createAuditLog(req.user.id, "UPDATE_DOMAIN", sanitizedName);
+      createAuditLog(req.user.id, "UPDATE_DOMAIN", sanitizedName).catch(console.error);
     }
 
-    res.status(200).json({ success: true, domain: updatedDomain });
+    return res.status(200).json({ success: true, domain: updatedDomain });
   } catch (error) {
     console.error("Update domain error:", error);
     res.status(500).json({ success: false, message: "Failed to update domain" });
@@ -117,10 +117,10 @@ export const deleteDomain = async (req: AuthRequest, res: Response) => {
     await prisma.domain.delete({ where: { id } });
 
     if (req.user) {
-      await createAuditLog(req.user.id, "DELETE_DOMAIN", domain.name);
+      createAuditLog(req.user.id, "DELETE_DOMAIN", domain.name).catch(console.error);
     }
 
-    res.status(200).json({ success: true, message: "Domain deleted successfully" });
+    return res.status(200).json({ success: true, message: "Domain deleted successfully" });
   } catch (error) {
     console.error("Delete domain error:", error);
     res.status(500).json({ success: false, message: "Failed to delete domain" });

@@ -14,6 +14,7 @@ export interface FilterOptions {
   academicYear?: string;
   yearOfStudy?: string;
   faculty?: string;
+  type?: string;
 }
 
 export function useDataView<T extends { date?: string; time?: string; name?: string; deletedDate?: string; domain?: string; department?: string; status?: string; uploadedBy?: string; year?: string }>(
@@ -29,7 +30,7 @@ export function useDataView<T extends { date?: string; time?: string; name?: str
   const [localSearchQuery, setLocalSearchQuery] = useState("");
   const [filters, setFilters] = useState<FilterOptions>({});
 
-  const { globalSearchQuery, fetchDocuments, fetchTrashDocuments, documents, trashDocuments, paginationData, trashPaginationData } = useAppContext();
+  const { globalSearchQuery, fetchDocuments, fetchTrashDocuments, documents, trashDocuments, paginationData, trashPaginationData, currentUser } = useAppContext();
   const searchQuery = localSearchQuery || globalSearchQuery;
   const setSearchQuery = setLocalSearchQuery;
 
@@ -155,9 +156,25 @@ export function useDataView<T extends { date?: string; time?: string; name?: str
       // Status filter
       if (filters.status && item.status !== filters.status) return false;
 
+      // Type (Access) filter: Edit vs View
+      if (filters.type && filters.type !== "All Types") {
+        const isAdmin = currentUser?.role?.toUpperCase() === 'ADMIN';
+        const isUploader = Boolean(
+          (currentUser?.id && anyItem.uploadedById === currentUser.id) ||
+          (currentUser?.name && anyItem.uploadedBy === currentUser.name) ||
+          (currentUser?.adminId && anyItem.uploadedBy === currentUser.adminId)
+        );
+        const isFacultyGranted = anyItem.accessType === 'ALL_FACULTY' || 
+          (anyItem.accessType === 'SELECT_FACULTY' && (anyItem.facultyAccess || []).some((fa: any) => (fa.facultyId || fa) === currentUser?.id));
+        const itemCanEdit = isAdmin || isUploader || Boolean(anyItem.canEdit) || isFacultyGranted;
+
+        if (filters.type.toLowerCase() === "edit" && !itemCanEdit) return false;
+        if (filters.type.toLowerCase() === "view" && itemCanEdit) return false;
+      }
+
       return true;
     });
-  }, [activeData, searchQuery, filters, serverFetchParamsStr]);
+  }, [activeData, searchQuery, filters, serverFetchParamsStr, currentUser]);
 
   const sortedData = useMemo(() => {
     if (serverFetchParams) return filteredData; // Backend handles sorting
@@ -195,7 +212,7 @@ export function useDataView<T extends { date?: string; time?: string; name?: str
     sortBy, setSortBy, currentPage: validCurrentPage, totalPages, handlePageChange,
     itemsPerPage, setItemsPerPage: handleItemsPerPageChange,
     viewMode, setViewMode, searchQuery, setSearchQuery, filters, setFilters,
-    paginatedData, filteredData,
+    paginatedData, filteredData, sortedData,
     totalItems: serverFetchParams ? (activePaginationData?.total || 0) : sortedData.length
   };
 }

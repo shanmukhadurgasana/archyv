@@ -25,9 +25,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     if (authStatus === "unauthenticated") {
       router.push("/");
     } else if (authStatus === "authenticated" && currentUser) {
-      if (pathname.startsWith("/admin") && currentUser.role.toLowerCase() !== "admin") {
+      const isUserAdmin = currentUser.role.toLowerCase() === "admin";
+      if (pathname.startsWith("/admin") && !isUserAdmin) {
         router.push("/faculty/overview");
-      } else if (pathname.startsWith("/faculty") && currentUser.role.toLowerCase() !== "faculty") {
+      } else if (pathname.startsWith("/faculty") && isUserAdmin) {
         router.push("/admin/overview");
       }
     }
@@ -50,6 +51,36 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   if (authStatus === "unauthenticated" || !currentUser) {
     return null; // Will redirect via useEffect
+  }
+
+  const isUserAdmin = currentUser.role.toLowerCase() === "admin";
+
+  if (pathname.startsWith("/admin") && !isUserAdmin) {
+    return (
+      <div className="flex h-screen bg-white">
+        <Sidebar role="faculty" />
+        <div className="flex-1 flex flex-col min-w-0">
+          <header className="h-20 border-b border-[var(--border)] bg-background flex items-center justify-between px-8 sticky top-0 z-10" />
+          <main className="flex-1 overflow-y-auto p-8 bg-[var(--background)] flex items-center justify-center">
+            <div className="w-8 h-8 border-4 border-[var(--archyv-accent)] border-t-transparent rounded-full animate-spin"></div>
+          </main>
+        </div>
+      </div>
+    );
+  }
+
+  if (pathname.startsWith("/faculty") && isUserAdmin) {
+    return (
+      <div className="flex h-screen bg-white">
+        <Sidebar role="admin" />
+        <div className="flex-1 flex flex-col min-w-0">
+          <header className="h-20 border-b border-[var(--border)] bg-background flex items-center justify-between px-8 sticky top-0 z-10" />
+          <main className="flex-1 overflow-y-auto p-8 bg-[var(--background)] flex items-center justify-center">
+            <div className="w-8 h-8 border-4 border-[var(--archyv-accent)] border-t-transparent rounded-full animate-spin"></div>
+          </main>
+        </div>
+      </div>
+    );
   }
 
   return (

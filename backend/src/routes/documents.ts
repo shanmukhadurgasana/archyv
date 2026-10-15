@@ -16,7 +16,15 @@ import {
   approveDocument,
   declineDocument,
   updateDocumentAccess,
-  updateDocument
+  updateDocument,
+  getOfficeLink,
+  handleOfficeOptions,
+  handleOfficeLock,
+  handleOfficeUnlock,
+  handleOfficeGet,
+  handleOfficePut,
+  updateDocumentContent,
+  getDocumentContent
 } from "../controllers/documentController";
 
 const router = Router();
@@ -39,7 +47,7 @@ router.get("/", getDocuments as any);
 router.post("/cleanup", requireRole(Role.ADMIN) as any, cleanupExpiredDocuments as any);
 
 // GET /api/documents/trash - Get all trashed documents
-router.get("/trash", requireRole(Role.ADMIN) as any, getTrashedDocuments as any);
+router.get("/trash", getTrashedDocuments as any);
 
 // POST /api/documents - Create a new document (upload file)
 router.post("/", upload.single("file"), createDocument as any);
@@ -54,7 +62,7 @@ router.patch("/:id", updateDocument as any);
 router.delete("/:id", requireRole(Role.ADMIN) as any, softDeleteDocument as any);
 
 // PATCH /api/documents/:id/restore - Restore a trashed document
-router.patch("/:id/restore", requireRole(Role.ADMIN) as any, restoreDocument as any);
+router.patch("/:id/restore", restoreDocument as any);
 
 // DELETE /api/documents/:id/permanent - Permanently delete a trashed document
 router.delete("/:id/permanent", requireRole(Role.ADMIN) as any, permanentDeleteDocument as any);
@@ -76,5 +84,22 @@ router.post("/:id/reject", requireRole(Role.ADMIN) as any, declineDocument as an
 
 // PATCH /api/documents/:id/access - Update document access (Admin only)
 router.patch("/:id/access", requireRole(Role.ADMIN) as any, updateDocumentAccess as any);
+
+// Office Sync & Links (for Desktop Excel / Word with auto-save)
+router.get("/:id/office-link", getOfficeLink as any);
+router.options("/:id/office-sync", handleOfficeOptions as any);
+router.get("/:id/office-sync", handleOfficeGet as any);
+router.put("/:id/office-sync", handleOfficePut as any);
+router.all("/:id/office-sync", (req, res, next) => {
+  const method = req.method?.toUpperCase();
+  if (method === 'LOCK') return handleOfficeLock(req as any, res);
+  if (method === 'UNLOCK') return handleOfficeUnlock(req as any, res);
+  next();
+});
+
+// Document Content Preview & Live Save (for in-browser editor and file sync)
+router.get("/:id/content", getDocumentContent as any);
+router.put("/:id/content", upload.single("file"), updateDocumentContent as any);
+router.post("/:id/content", upload.single("file"), updateDocumentContent as any);
 
 export default router;

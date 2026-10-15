@@ -14,7 +14,8 @@ function OptionCard({
   onAdd,
   onUpdate,
   onDelete,
-  placeholder
+  placeholder,
+  readOnly = false
 }: {
   title: string;
   items: { id: string; name: string }[];
@@ -22,6 +23,7 @@ function OptionCard({
   onUpdate: (id: string, name: string) => Promise<{ success: boolean; error?: string }>;
   onDelete: (id: string) => Promise<{ success: boolean; error?: string }>;
   placeholder: string;
+  readOnly?: boolean;
 }) {
   const [newValue, setNewValue] = useState("");
   const [isAdding, setIsAdding] = useState(false);
@@ -110,26 +112,28 @@ function OptionCard({
             ) : (
               <>
                 <span className="truncate flex-1">{item.name}</span>
-                <div className="flex gap-1 ml-2">
-                  <button
-                    onClick={() => {
-                      setEditingId(item.id);
-                      setEditValue(item.name);
-                    }}
-                    className="p-1.5 text-gray-400 hover:text-[var(--archyv-accent)] hover:bg-gray-100 rounded transition-colors"
-                    title="Edit"
-                  >
-                    <Pencil size={14} />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(item.id, item.name)}
-                    disabled={isDeletingId === item.id}
-                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
-                    title="Delete"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
+                {!readOnly && (
+                  <div className="flex gap-1 ml-2">
+                    <button
+                      onClick={() => {
+                        setEditingId(item.id);
+                        setEditValue(item.name);
+                      }}
+                      className="p-1.5 text-gray-400 hover:text-[var(--archyv-accent)] hover:bg-gray-100 rounded transition-colors"
+                      title="Edit"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(item.id, item.name)}
+                      disabled={isDeletingId === item.id}
+                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+                      title="Delete"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -137,26 +141,28 @@ function OptionCard({
         {items.length === 0 && <p className="text-gray-400 text-sm text-center py-4">No {title.toLowerCase()}s found.</p>}
       </div>
 
-      <form onSubmit={handleAdd} className="space-y-3">
-        <label className="text-sm font-semibold text-foreground">Add New {title}</label>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            placeholder={placeholder}
-            value={newValue}
-            onChange={e => setNewValue(e.target.value)}
-            className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--archyv-accent)]/50 focus:border-[var(--archyv-accent)] transition-all"
-          />
-          <button
-            type="submit"
-            disabled={isAdding || !newValue.trim()}
-            className="px-4 py-2 bg-[var(--archyv-accent)] text-white text-sm font-semibold rounded-lg hover:bg-[var(--archyv-accent-hover)] disabled:opacity-50 transition-colors"
-          >
-            {isAdding ? "Adding..." : "+ Add"}
-          </button>
-        </div>
-        {addError && <p className="text-red-500 text-xs mt-1">{addError}</p>}
-      </form>
+      {!readOnly && (
+        <form onSubmit={handleAdd} className="space-y-3">
+          <label className="text-sm font-semibold text-foreground">Add New {title}</label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder={placeholder}
+              value={newValue}
+              onChange={e => setNewValue(e.target.value)}
+              className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--archyv-accent)]/50 focus:border-[var(--archyv-accent)] transition-all"
+            />
+            <button
+              type="submit"
+              disabled={isAdding || !newValue.trim()}
+              className="px-4 py-2 bg-[var(--archyv-accent)] text-white text-sm font-semibold rounded-lg hover:bg-[var(--archyv-accent-hover)] disabled:opacity-50 transition-colors"
+            >
+              {isAdding ? "Adding..." : "+ Add"}
+            </button>
+          </div>
+          {addError && <p className="text-red-500 text-xs mt-1">{addError}</p>}
+        </form>
+      )}
 
       <ConfirmationModal
         isOpen={!!deleteConfirmation}
@@ -177,7 +183,8 @@ function DomainOptionCard({
   onDeleteDomain,
   onAddSubdomain,
   onUpdateSubdomain,
-  onDeleteSubdomain
+  onDeleteSubdomain,
+  readOnly = false
 }: {
   domains: Domain[];
   onAddDomain: (name: string, isFaculty?: boolean) => Promise<{ success: boolean; error?: string }>;
@@ -186,6 +193,7 @@ function DomainOptionCard({
   onAddSubdomain: (domainId: string, name: string) => Promise<{ success: boolean; error?: string }>;
   onUpdateSubdomain: (domainId: string, id: string, name: string) => Promise<{ success: boolean; error?: string }>;
   onDeleteSubdomain: (domainId: string, id: string) => Promise<{ success: boolean; error?: string }>;
+  readOnly?: boolean;
 }) {
   const [newValue, setNewValue] = useState("");
   const [newIsFaculty, setNewIsFaculty] = useState(false);
@@ -323,17 +331,19 @@ function DomainOptionCard({
                       </span>
                     )}
                   </div>
-                  <div className="flex gap-1 ml-2 items-center">
-                    <button onClick={() => { setAddingSubdomainDomainId(domain.id); setExpandedDomain(domain.id); }} className="p-1.5 text-[var(--archyv-accent)] hover:bg-[var(--archyv-accent)]/10 rounded transition-colors" title="Add Subdomain">
-                      <Plus size={14} />
-                    </button>
-                    <button onClick={() => { setEditingId(domain.id); setEditValue(domain.name); setEditIsFaculty(Boolean(domain.isFaculty)); }} className="p-1.5 text-gray-400 hover:text-[var(--archyv-accent)] hover:bg-gray-100 rounded transition-colors" title="Edit">
-                      <Pencil size={14} />
-                    </button>
-                    <button onClick={() => handleDelete(domain.id, domain.name, false)} disabled={isDeletingId === domain.id} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors disabled:opacity-50" title="Delete">
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
+                  {!readOnly && (
+                    <div className="flex gap-1 ml-2 items-center">
+                      <button onClick={() => { setAddingSubdomainDomainId(domain.id); setExpandedDomain(domain.id); }} className="p-1.5 text-[var(--archyv-accent)] hover:bg-[var(--archyv-accent)]/10 rounded transition-colors" title="Add Subdomain">
+                        <Plus size={14} />
+                      </button>
+                      <button onClick={() => { setEditingId(domain.id); setEditValue(domain.name); setEditIsFaculty(Boolean(domain.isFaculty)); }} className="p-1.5 text-gray-400 hover:text-[var(--archyv-accent)] hover:bg-gray-100 rounded transition-colors" title="Edit">
+                        <Pencil size={14} />
+                      </button>
+                      <button onClick={() => handleDelete(domain.id, domain.name, false)} disabled={isDeletingId === domain.id} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors disabled:opacity-50" title="Delete">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -356,14 +366,16 @@ function DomainOptionCard({
                       ) : (
                         <>
                           <span className="truncate flex-1">- {sub.name}</span>
-                          <div className="flex gap-1 ml-2">
-                            <button onClick={() => { setEditingId(sub.id); setEditValue(sub.name); }} className="p-1 text-gray-400 hover:text-[var(--archyv-accent)] rounded">
-                              <Pencil size={12} />
-                            </button>
-                            <button onClick={() => handleDelete(sub.id, sub.name, true, domain.id)} className="p-1 text-gray-400 hover:text-red-500 rounded">
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
+                          {!readOnly && (
+                            <div className="flex gap-1 ml-2">
+                              <button onClick={() => { setEditingId(sub.id); setEditValue(sub.name); }} className="p-1 text-gray-400 hover:text-[var(--archyv-accent)] rounded">
+                                <Pencil size={12} />
+                              </button>
+                              <button onClick={() => handleDelete(sub.id, sub.name, true, domain.id)} className="p-1 text-gray-400 hover:text-red-500 rounded">
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          )}
                         </>
                       )}
                     </div>
@@ -372,7 +384,7 @@ function DomainOptionCard({
                   <div className="py-2 pl-6 text-sm text-gray-400 italic">No subdomains</div>
                 )}
                 
-                {addingSubdomainDomainId === domain.id && (
+                {!readOnly && addingSubdomainDomainId === domain.id && (
                   <div className="flex gap-2 items-center py-2 pl-6 pr-2">
                     <input
                       type="text"
@@ -397,37 +409,39 @@ function DomainOptionCard({
         {domains.length === 0 && <p className="text-gray-400 text-sm text-center py-4">No domains found.</p>}
       </div>
 
-      <form onSubmit={handleAdd} className="space-y-3">
-        <label className="text-sm font-semibold text-foreground">Add New Domain</label>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            placeholder="e.g. Faculty, Projects"
-            value={newValue}
-            onChange={e => setNewValue(e.target.value)}
-            className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--archyv-accent)]/50 focus:border-[var(--archyv-accent)] transition-all"
-          />
-          <button
-            type="submit"
-            disabled={isAdding || !newValue.trim()}
-            className="px-4 py-2 bg-[var(--archyv-accent)] text-white text-sm font-semibold rounded-lg hover:bg-[var(--archyv-accent-hover)] disabled:opacity-50 transition-colors"
-          >
-            {isAdding ? "Adding..." : "+ Add"}
-          </button>
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
+      {!readOnly && (
+        <form onSubmit={handleAdd} className="space-y-3">
+          <label className="text-sm font-semibold text-foreground">Add New Domain</label>
+          <div className="flex gap-2">
             <input
-              type="checkbox"
-              checked={newIsFaculty}
-              onChange={e => setNewIsFaculty(e.target.checked)}
-              className="rounded border-gray-300 text-[var(--archyv-accent)] focus:ring-[var(--archyv-accent)]"
+              type="text"
+              placeholder="e.g. Faculty, Projects"
+              value={newValue}
+              onChange={e => setNewValue(e.target.value)}
+              className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--archyv-accent)]/50 focus:border-[var(--archyv-accent)] transition-all"
             />
-            <span>Mark as Faculty Domain (👥)</span>
-          </label>
-        </div>
-        {addError && <p className="text-red-500 text-xs mt-1">{addError}</p>}
-      </form>
+            <button
+              type="submit"
+              disabled={isAdding || !newValue.trim()}
+              className="px-4 py-2 bg-[var(--archyv-accent)] text-white text-sm font-semibold rounded-lg hover:bg-[var(--archyv-accent-hover)] disabled:opacity-50 transition-colors"
+            >
+              {isAdding ? "Adding..." : "+ Add"}
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={newIsFaculty}
+                onChange={e => setNewIsFaculty(e.target.checked)}
+                className="rounded border-gray-300 text-[var(--archyv-accent)] focus:ring-[var(--archyv-accent)]"
+              />
+              <span>Mark as Faculty Domain (👥)</span>
+            </label>
+          </div>
+          {addError && <p className="text-red-500 text-xs mt-1">{addError}</p>}
+        </form>
+      )}
     </div>
   );
 }
@@ -442,7 +456,8 @@ function BranchOptionCard({
   onDeleteBranch,
   onAddSection,
   onUpdateSection,
-  onDeleteSection
+  onDeleteSection,
+  readOnly = false
 }: {
   branches: Department[];
   onAddBranch: (name: string) => Promise<{ success: boolean; error?: string }>;
@@ -451,6 +466,7 @@ function BranchOptionCard({
   onAddSection: (branchId: string, name: string) => Promise<{ success: boolean; error?: string }>;
   onUpdateSection: (branchId: string, id: string, name: string) => Promise<{ success: boolean; error?: string }>;
   onDeleteSection: (branchId: string, id: string) => Promise<{ success: boolean; error?: string }>;
+  readOnly?: boolean;
 }) {
   const [newValue, setNewValue] = useState("");
   const [isAdding, setIsAdding] = useState(false);
@@ -572,30 +588,32 @@ function BranchOptionCard({
                       {(branch.sections?.length || 0)} {(branch.sections?.length === 1 ? 'section' : 'sections')}
                     </span>
                   </div>
-                  <div className="flex gap-1 ml-2 items-center">
-                    <button
-                      onClick={() => { setAddingSectionBranchId(branch.id); setExpandedBranch(branch.id); }}
-                      className="p-1.5 text-[var(--archyv-accent)] hover:bg-[var(--archyv-accent)]/10 rounded transition-colors"
-                      title="Add Section (Sub-branch)"
-                    >
-                      <Plus size={14} />
-                    </button>
-                    <button
-                      onClick={() => { setEditingId(branch.id); setEditValue(branch.name); }}
-                      className="p-1.5 text-gray-400 hover:text-[var(--archyv-accent)] hover:bg-gray-100 rounded transition-colors"
-                      title="Edit Branch"
-                    >
-                      <Pencil size={14} />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(branch.id, branch.name, false)}
-                      disabled={isDeletingId === branch.id}
-                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
-                      title="Delete Branch"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
+                  {!readOnly && (
+                    <div className="flex gap-1 ml-2 items-center">
+                      <button
+                        onClick={() => { setAddingSectionBranchId(branch.id); setExpandedBranch(branch.id); }}
+                        className="p-1.5 text-[var(--archyv-accent)] hover:bg-[var(--archyv-accent)]/10 rounded transition-colors"
+                        title="Add Section (Sub-branch)"
+                      >
+                        <Plus size={14} />
+                      </button>
+                      <button
+                        onClick={() => { setEditingId(branch.id); setEditValue(branch.name); }}
+                        className="p-1.5 text-gray-400 hover:text-[var(--archyv-accent)] hover:bg-gray-100 rounded transition-colors"
+                        title="Edit Branch"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(branch.id, branch.name, false)}
+                        disabled={isDeletingId === branch.id}
+                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+                        title="Delete Branch"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -618,14 +636,16 @@ function BranchOptionCard({
                       ) : (
                         <>
                           <span className="truncate flex-1">- Section {sec.name}</span>
-                          <div className="flex gap-1 ml-2">
-                            <button onClick={() => { setEditingId(sec.id); setEditValue(sec.name); }} className="p-1 text-gray-400 hover:text-[var(--archyv-accent)] rounded">
-                              <Pencil size={12} />
-                            </button>
-                            <button onClick={() => handleDelete(sec.id, sec.name, true, branch.id)} className="p-1 text-gray-400 hover:text-red-500 rounded">
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
+                          {!readOnly && (
+                            <div className="flex gap-1 ml-2">
+                              <button onClick={() => { setEditingId(sec.id); setEditValue(sec.name); }} className="p-1 text-gray-400 hover:text-[var(--archyv-accent)] rounded">
+                                <Pencil size={12} />
+                              </button>
+                              <button onClick={() => handleDelete(sec.id, sec.name, true, branch.id)} className="p-1 text-gray-400 hover:text-red-500 rounded">
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          )}
                         </>
                       )}
                     </div>
@@ -634,7 +654,7 @@ function BranchOptionCard({
                   <div className="py-2 pl-6 text-sm text-gray-400 italic">No sections created yet</div>
                 )}
 
-                {addingSectionBranchId === branch.id && (
+                {!readOnly && addingSectionBranchId === branch.id && (
                   <div className="flex gap-2 items-center py-2 pl-6 pr-2">
                     <input
                       type="text"
@@ -659,26 +679,28 @@ function BranchOptionCard({
         {branches.length === 0 && <p className="text-gray-400 text-sm text-center py-4">No branches found.</p>}
       </div>
 
-      <form onSubmit={handleAdd} className="space-y-3">
-        <label className="text-sm font-semibold text-foreground">Add New Branch</label>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            placeholder="e.g. CSE, CSD, ECE"
-            value={newValue}
-            onChange={e => setNewValue(e.target.value)}
-            className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--archyv-accent)]/50 focus:border-[var(--archyv-accent)] transition-all"
-          />
-          <button
-            type="submit"
-            disabled={isAdding || !newValue.trim()}
-            className="px-4 py-2 bg-[var(--archyv-accent)] text-white text-sm font-semibold rounded-lg hover:bg-[var(--archyv-accent-hover)] disabled:opacity-50 transition-colors"
-          >
-            {isAdding ? "Adding..." : "+ Add"}
-          </button>
-        </div>
-        {addError && <p className="text-red-500 text-xs mt-1">{addError}</p>}
-      </form>
+      {!readOnly && (
+        <form onSubmit={handleAdd} className="space-y-3">
+          <label className="text-sm font-semibold text-foreground">Add New Branch</label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="e.g. CSE, CSD, ECE"
+              value={newValue}
+              onChange={e => setNewValue(e.target.value)}
+              className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--archyv-accent)]/50 focus:border-[var(--archyv-accent)] transition-all"
+            />
+            <button
+              type="submit"
+              disabled={isAdding || !newValue.trim()}
+              className="px-4 py-2 bg-[var(--archyv-accent)] text-white text-sm font-semibold rounded-lg hover:bg-[var(--archyv-accent-hover)] disabled:opacity-50 transition-colors"
+            >
+              {isAdding ? "Adding..." : "+ Add"}
+            </button>
+          </div>
+          {addError && <p className="text-red-500 text-xs mt-1">{addError}</p>}
+        </form>
+      )}
 
       <ConfirmationModal
         isOpen={!!deleteConfirmation}
@@ -693,7 +715,9 @@ function BranchOptionCard({
 }
 
 export default function ManageOptions() {
-  const { domains, academicYears, departments, fetchDomains, fetchAcademicYears, fetchDepartments } = useAppContext();
+  const { domains, academicYears, departments, fetchDomains, fetchAcademicYears, fetchDepartments, currentUser } = useAppContext();
+  const isAdmin = currentUser?.role?.toLowerCase() === 'admin';
+  const isAuthorized = isAdmin || currentUser?.role?.toLowerCase() === 'faculty';
   
   const apiCall = async (url: string, method: string, body?: any) => {
     const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}${url}`, {
@@ -809,6 +833,7 @@ export default function ManageOptions() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <DomainOptionCard
           domains={domains}
+          readOnly={!isAuthorized}
           onAddDomain={domainOps.add}
           onUpdateDomain={domainOps.update}
           onDeleteDomain={domainOps.delete}
@@ -819,6 +844,7 @@ export default function ManageOptions() {
         <OptionCard
           title="Academic Year"
           items={academicYears.map(y => ({ id: y.id, name: y.year }))}
+          readOnly={!isAuthorized}
           onAdd={yearOps.add}
           onUpdate={yearOps.update}
           onDelete={yearOps.delete}
@@ -826,6 +852,7 @@ export default function ManageOptions() {
         />
         <BranchOptionCard
           branches={departments}
+          readOnly={!isAuthorized}
           onAddBranch={branchOps.add}
           onUpdateBranch={branchOps.update}
           onDeleteBranch={branchOps.delete}

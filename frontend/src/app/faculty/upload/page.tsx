@@ -176,7 +176,7 @@ export default function FacultyUpload() {
 
       setShowSuccess(true);
       setTimeout(() => {
-        router.push("/faculty/overview");
+        router.push("/faculty/pending");
       }, 1000);
     } catch (err: any) {
       console.error(err);

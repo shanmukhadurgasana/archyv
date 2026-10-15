@@ -18,8 +18,7 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
     } else {
       baseWhere.OR = [
         { uploadedById: userId },
-        { accessType: 'ALL_FACULTY' },
-        { facultyAccess: { some: { facultyId: userId } } }
+        { status: 'APPROVED' }
       ];
     }
 

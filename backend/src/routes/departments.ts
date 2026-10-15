@@ -16,17 +16,17 @@ const router = Router();
 router.use(requireAuth);
 
 router.get("/", getDepartments as any);
-router.post("/", requireRole(Role.ADMIN) as any, createDepartment as any);
-router.patch("/:id", requireRole(Role.ADMIN) as any, updateDepartment as any);
-router.delete("/:id", requireRole(Role.ADMIN) as any, deleteDepartment as any);
+router.post("/", requireRole(Role.ADMIN, Role.FACULTY) as any, createDepartment as any);
+router.patch("/:id", requireRole(Role.ADMIN, Role.FACULTY) as any, updateDepartment as any);
+router.delete("/:id", requireRole(Role.ADMIN, Role.FACULTY) as any, deleteDepartment as any);
 
 // Section routes nested under department
-router.post("/:deptId/sections", requireRole(Role.ADMIN) as any, createSection as any);
-router.patch("/:deptId/sections/:sectionId", requireRole(Role.ADMIN) as any, updateSection as any);
-router.delete("/:deptId/sections/:sectionId", requireRole(Role.ADMIN) as any, deleteSection as any);
+router.post("/:deptId/sections", requireRole(Role.ADMIN, Role.FACULTY) as any, createSection as any);
+router.patch("/:deptId/sections/:sectionId", requireRole(Role.ADMIN, Role.FACULTY) as any, updateSection as any);
+router.delete("/:deptId/sections/:sectionId", requireRole(Role.ADMIN, Role.FACULTY) as any, deleteSection as any);
 
 // Alternative direct section routes
-router.patch("/sections/:id", requireRole(Role.ADMIN) as any, updateSection as any);
-router.delete("/sections/:id", requireRole(Role.ADMIN) as any, deleteSection as any);
+router.patch("/sections/:id", requireRole(Role.ADMIN, Role.FACULTY) as any, updateSection as any);
+router.delete("/sections/:id", requireRole(Role.ADMIN, Role.FACULTY) as any, deleteSection as any);
 
 export default router;

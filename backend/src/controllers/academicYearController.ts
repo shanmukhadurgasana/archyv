@@ -41,10 +41,10 @@ export const createAcademicYear = async (req: AuthRequest, res: Response) => {
     });
 
     if (req.user) {
-      await createAuditLog(req.user.id, "CREATE_ACADEMIC_YEAR", sanitizedYear);
+      createAuditLog(req.user.id, "CREATE_ACADEMIC_YEAR", sanitizedYear).catch(console.error);
     }
 
-    res.status(201).json({ success: true, academicYear: newYear });
+    return res.status(201).json({ success: true, academicYear: newYear });
   } catch (error) {
     console.error("Create academic year error:", error);
     res.status(500).json({ success: false, message: "Failed to create academic year" });
@@ -79,10 +79,10 @@ export const updateAcademicYear = async (req: AuthRequest, res: Response) => {
     });
 
     if (req.user) {
-      await createAuditLog(req.user.id, "UPDATE_ACADEMIC_YEAR", sanitizedYear);
+      createAuditLog(req.user.id, "UPDATE_ACADEMIC_YEAR", sanitizedYear).catch(console.error);
     }
 
-    res.status(200).json({ success: true, academicYear: updatedYear });
+    return res.status(200).json({ success: true, academicYear: updatedYear });
   } catch (error) {
     console.error("Update academic year error:", error);
     res.status(500).json({ success: false, message: "Failed to update academic year" });
@@ -106,10 +106,10 @@ export const deleteAcademicYear = async (req: AuthRequest, res: Response) => {
     await prisma.academicYear.delete({ where: { id } });
 
     if (req.user) {
-      await createAuditLog(req.user.id, "DELETE_ACADEMIC_YEAR", academicYear.year);
+      createAuditLog(req.user.id, "DELETE_ACADEMIC_YEAR", academicYear.year).catch(console.error);
     }
 
-    res.status(200).json({ success: true, message: "Academic year deleted successfully" });
+    return res.status(200).json({ success: true, message: "Academic year deleted successfully" });
   } catch (error) {
     console.error("Delete academic year error:", error);
     res.status(500).json({ success: false, message: "Failed to delete academic year" });

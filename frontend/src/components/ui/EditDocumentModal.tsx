@@ -1,6 +1,7 @@
 "use client";
 
 import { X, Sparkles, Loader2 } from "lucide-react";
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAppContext } from "@/store/AppContext";
@@ -11,13 +12,24 @@ interface EditDocumentModalProps {
   isOpen: boolean;
   document: Document;
   onClose: () => void;
+  isRenameAndApprove?: boolean;
 }
 
-export default function EditDocumentModal({ isOpen, document, onClose }: EditDocumentModalProps) {
-  const { domains, departments, academicYears, updateDocument } = useAppContext();
+export default function EditDocumentModal({ isOpen, document, onClose, isRenameAndApprove = false }: EditDocumentModalProps) {
+  const { domains, departments, academicYears, updateDocument, currentUser, approveDocument } = useAppContext();
   const [mounted, setMounted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const isAdmin = currentUser?.role?.toLowerCase() === 'admin';
+  const isUploader = Boolean(
+    (currentUser?.id && document?.uploadedById === currentUser.id) ||
+    (currentUser?.name && document?.uploadedBy === currentUser.name) ||
+    (currentUser?.adminId && document?.uploadedBy === currentUser.adminId)
+  );
+  const isFacultyGranted = document?.accessType === 'ALL_FACULTY' || 
+    (document?.accessType === 'SELECT_FACULTY' && Array.isArray(document?.facultyAccess) && document.facultyAccess.some((fa: any) => (fa.facultyId || fa) === currentUser?.id));
+  const canEdit = isAdmin || isUploader || Boolean(document?.canEdit) || isFacultyGranted;
 
   // Form states
   const [title, setTitle] = useState("");
@@ -92,6 +104,10 @@ export default function EditDocumentModal({ isOpen, document, onClose }: EditDoc
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canEdit) {
+      setError("Read-only access: You do not have permission to edit this document. Only administrators or faculty granted edit access can modify file details.");
+      return;
+    }
     if (!title.trim()) {
       setError("Document title cannot be empty");
       return;
@@ -115,6 +131,9 @@ export default function EditDocumentModal({ isOpen, document, onClose }: EditDoc
       });
 
       if (res.success) {
+        if (isRenameAndApprove) {
+          await approveDocument(document.id);
+        }
         onClose();
       } else {
         setError(res.error || "Failed to update document");
@@ -140,8 +159,14 @@ export default function EditDocumentModal({ isOpen, document, onClose }: EditDoc
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)] bg-gray-50/50">
           <div>
-            <h3 className="text-base font-bold text-foreground">Edit File Details</h3>
-            <p className="text-xs text-gray-500">Update file metadata, academic details, and naming.</p>
+            <h3 className="text-base font-bold text-foreground">
+              {isRenameAndApprove ? "Rename & Approve Document" : (canEdit ? "Edit File Details" : "Document Details")}
+            </h3>
+            <p className="text-xs text-gray-500">
+              {isRenameAndApprove 
+                ? "Rename file or update metadata and approve for the institution." 
+                : "Update file metadata, academic details, and naming."}
+            </p>
           </div>
           <button 
             onClick={onClose}
@@ -154,6 +179,15 @@ export default function EditDocumentModal({ isOpen, document, onClose }: EditDoc
 
         {/* Form Body */}
         <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-6 space-y-4">
+          {!canEdit && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 font-medium flex items-center gap-2">
+              <span className="font-bold uppercase tracking-wider text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded flex items-center gap-1.5">
+                <Image src="/view-eye.png" alt="View Only" width={16} height={9} className="w-3.5 h-auto object-contain inline-block" /> View Only
+              </span>
+              <span>You have read-only access to this document. Only administrators or faculty granted edit access can modify file details.</span>
+            </div>
+          )}
+
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 font-medium">
               {error}
@@ -166,22 +200,25 @@ export default function EditDocumentModal({ isOpen, document, onClose }: EditDoc
               <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">
                 Document Title / Name <span className="text-red-500">*</span>
               </label>
-              <button
-                type="button"
-                onClick={handleAutoGenerateTitle}
-                className="text-[11px] font-semibold text-[var(--archyv-accent)] hover:underline flex items-center gap-1"
-                title="Auto-generate title based on fields below"
-              >
-                <Sparkles className="w-3 h-3" />
-                Auto-generate name
-              </button>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={handleAutoGenerateTitle}
+                  className="text-[11px] font-semibold text-[var(--archyv-accent)] hover:underline flex items-center gap-1"
+                  title="Auto-generate title based on fields below"
+                >
+                  <Sparkles className="w-3 h-3" />
+                  Auto-generate name
+                </button>
+              )}
             </div>
             <input
               type="text"
               value={title}
+              disabled={!canEdit}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. syllabus.pdf"
-              className="w-full px-3.5 py-2 text-sm bg-white border border-[var(--border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--archyv-accent)]/20 focus:border-[var(--archyv-accent)] transition-all font-medium text-foreground"
+              className="w-full px-3.5 py-2 text-sm bg-white border border-[var(--border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--archyv-accent)]/20 focus:border-[var(--archyv-accent)] transition-all font-medium text-foreground disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
               required
             />
           </div>
@@ -192,6 +229,7 @@ export default function EditDocumentModal({ isOpen, document, onClose }: EditDoc
               <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Domain</label>
               <CustomDropdown
                 value={domain}
+                disabled={!canEdit}
                 onChange={(v) => {
                   setDomain(v);
                   setSubdomain("None");
@@ -206,6 +244,7 @@ export default function EditDocumentModal({ isOpen, document, onClose }: EditDoc
               <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Subdomain</label>
               <CustomDropdown
                 value={subdomain}
+                disabled={!canEdit}
                 onChange={setSubdomain}
                 options={["None", ...subdomainOptions]}
                 fullWidth
@@ -217,6 +256,7 @@ export default function EditDocumentModal({ isOpen, document, onClose }: EditDoc
               <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Academic Year</label>
               <CustomDropdown
                 value={academicYear}
+                disabled={!canEdit}
                 onChange={setAcademicYear}
                 options={["None", ...sortedAcademicYears]}
                 fullWidth
@@ -228,6 +268,7 @@ export default function EditDocumentModal({ isOpen, document, onClose }: EditDoc
               <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Year of Study</label>
               <CustomDropdown
                 value={yearOfStudy}
+                disabled={!canEdit}
                 onChange={setYearOfStudy}
                 options={["None", "1st yr", "2nd yr", "3rd yr", "4th yr"]}
                 fullWidth
@@ -239,6 +280,7 @@ export default function EditDocumentModal({ isOpen, document, onClose }: EditDoc
               <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Branch</label>
               <CustomDropdown
                 value={branch}
+                disabled={!canEdit}
                 onChange={(v) => {
                   setBranch(v);
                   setSection("Overall Section");
@@ -253,6 +295,7 @@ export default function EditDocumentModal({ isOpen, document, onClose }: EditDoc
               <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Section</label>
               <CustomDropdown
                 value={section}
+                disabled={!canEdit}
                 onChange={setSection}
                 options={["Overall Section", ...branchSectionOptions]}
                 fullWidth
@@ -264,6 +307,7 @@ export default function EditDocumentModal({ isOpen, document, onClose }: EditDoc
               <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Semester</label>
               <CustomDropdown
                 value={semester}
+                disabled={!canEdit}
                 onChange={setSemester}
                 options={["No Semester", "Semester 1", "Semester 2"]}
                 fullWidth
@@ -283,11 +327,19 @@ export default function EditDocumentModal({ isOpen, document, onClose }: EditDoc
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
-              className="px-5 py-2 text-xs font-semibold text-foreground bg-[var(--archyv-accent)] hover:bg-[var(--archyv-accent-hover)] rounded-xl transition-all shadow-sm flex items-center gap-2 disabled:opacity-50"
+              disabled={isSubmitting || !canEdit}
+              className="px-5 py-2 text-xs font-semibold text-foreground bg-[var(--archyv-accent)] hover:bg-[var(--archyv-accent-hover)] rounded-xl transition-all shadow-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-              <span>{isSubmitting ? "Saving..." : "Save Changes"}</span>
+              <span>
+                {isSubmitting 
+                  ? (isRenameAndApprove ? "Approving..." : "Saving...") 
+                  : isRenameAndApprove 
+                    ? "Rename & Approve" 
+                    : canEdit 
+                      ? "Save Changes" 
+                      : "Read Only"}
+              </span>
             </button>
           </div>
         </form>

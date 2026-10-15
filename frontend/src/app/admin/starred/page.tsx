@@ -15,8 +15,8 @@ export default function AdminStarred() {
   const { documents, starredDocs, currentUser, isDataLoading } = useAppContext();
 
   // Local filtering for starred docs to prevent overriding the global documents cache
-  const userStarredIds = currentUser ? starredDocs[currentUser.id] || [] : [];
-  const starredFiles = documents.filter(f => !f.isDeleted && (f.isStarred || userStarredIds.includes(f.id)));
+  const userStarredIds = currentUser ? starredDocs[currentUser.id] : undefined;
+  const starredFiles = documents.filter(f => !f.isDeleted && (userStarredIds !== undefined ? userStarredIds.includes(f.id) : Boolean(f.isStarred)));
 
   const {
     sortBy, setSortBy,

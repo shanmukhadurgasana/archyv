@@ -13,7 +13,7 @@ interface AccessModalProps {
 }
 
 export default function AccessModal({ isOpen, document, onClose }: AccessModalProps) {
-  const { users, updateDocumentAccess } = useAppContext();
+  const { users, updateDocumentAccess, currentUser } = useAppContext();
   const [mounted, setMounted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -39,7 +39,7 @@ export default function AccessModal({ isOpen, document, onClose }: AccessModalPr
     }
   }, [isOpen, document]);
 
-  if (!isOpen || !mounted) return null;
+  if (!isOpen || !mounted || currentUser?.role?.toLowerCase() !== 'admin') return null;
 
   const handleSave = async () => {
     if (isSubmitting) return;
@@ -66,7 +66,10 @@ export default function AccessModal({ isOpen, document, onClose }: AccessModalPr
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={(e) => e.stopPropagation()}>
       <div className="bg-white border border-[var(--border)] rounded-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden shadow-xl animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between p-6 border-b border-[var(--border)]">
-          <h3 className="text-lg font-bold text-foreground">Document Access</h3>
+          <div>
+            <h3 className="text-lg font-bold text-foreground">Document Edit Permissions</h3>
+            <p className="text-xs text-gray-500 mt-0.5">All faculty can view approved documents. Choose who can edit this document.</p>
+          </div>
           <button 
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 transition-colors"
@@ -76,36 +79,42 @@ export default function AccessModal({ isOpen, document, onClose }: AccessModalPr
         </div>
         <div className="p-6 flex-1 overflow-y-auto">
           <div className="space-y-4">
-            <label className="flex items-center gap-3 cursor-pointer">
+            <label className="flex items-start gap-3 cursor-pointer p-2.5 rounded-xl hover:bg-gray-50 transition-colors border border-transparent hover:border-gray-200">
               <input 
                 type="radio" 
                 name="accessMode" 
                 value="NONE" 
                 checked={accessMode === "NONE"}
                 onChange={() => setAccessMode("NONE")}
-                className="w-4 h-4 text-[var(--archyv-accent)] focus:ring-[var(--archyv-accent)] border-gray-300"
+                className="mt-1 w-4 h-4 text-[var(--archyv-accent)] focus:ring-[var(--archyv-accent)] border-gray-300"
               />
-              <span className="text-sm font-medium text-gray-700">None</span>
+              <div>
+                <span className="text-sm font-semibold text-gray-900 block">None (View-Only for all faculty)</span>
+                <span className="text-xs text-gray-500 block mt-0.5">All faculty have read-only view access. Only administrators can edit this document.</span>
+              </div>
             </label>
-            <label className="flex items-center gap-3 cursor-pointer">
+            <label className="flex items-start gap-3 cursor-pointer p-2.5 rounded-xl hover:bg-gray-50 transition-colors border border-transparent hover:border-gray-200">
               <input 
                 type="radio" 
                 name="accessMode" 
                 value="SELECT_FACULTY" 
                 checked={accessMode === "SELECT_FACULTY"}
                 onChange={() => setAccessMode("SELECT_FACULTY")}
-                className="w-4 h-4 text-[var(--archyv-accent)] focus:ring-[var(--archyv-accent)] border-gray-300"
+                className="mt-1 w-4 h-4 text-[var(--archyv-accent)] focus:ring-[var(--archyv-accent)] border-gray-300"
               />
-              <span className="text-sm font-medium text-gray-700">Select Faculty</span>
+              <div>
+                <span className="text-sm font-semibold text-gray-900 block">Specific Faculty (Grant Edit Access)</span>
+                <span className="text-xs text-gray-500 block mt-0.5">Only selected faculty can edit. All other faculty have view-only access.</span>
+              </div>
             </label>
             
             {accessMode === "SELECT_FACULTY" && (
-              <div className="pl-7 pr-2 py-2 max-h-48 overflow-y-auto border border-gray-200 rounded-lg bg-gray-50 space-y-2 mt-2">
+              <div className="ml-7 pr-2 py-2 max-h-48 overflow-y-auto border border-gray-200 rounded-lg bg-gray-50 space-y-2 mt-1">
                 {facultyUsers.length === 0 ? (
-                  <p className="text-xs text-gray-500 py-2">No active faculty found.</p>
+                  <p className="text-xs text-gray-500 py-2 px-3">No active faculty found.</p>
                 ) : (
                   facultyUsers.map(faculty => (
-                    <label key={faculty.id} className="flex items-center gap-2 cursor-pointer p-1 hover:bg-gray-100 rounded">
+                    <label key={faculty.id} className="flex items-center gap-2 cursor-pointer p-1.5 px-3 hover:bg-gray-100 rounded">
                       <input 
                         type="checkbox" 
                         checked={selectedFaculty.includes(faculty.id)}
@@ -119,16 +128,19 @@ export default function AccessModal({ isOpen, document, onClose }: AccessModalPr
               </div>
             )}
 
-            <label className="flex items-center gap-3 cursor-pointer">
+            <label className="flex items-start gap-3 cursor-pointer p-2.5 rounded-xl hover:bg-gray-50 transition-colors border border-transparent hover:border-gray-200">
               <input 
                 type="radio" 
                 name="accessMode" 
                 value="ALL_FACULTY" 
                 checked={accessMode === "ALL_FACULTY"}
                 onChange={() => setAccessMode("ALL_FACULTY")}
-                className="w-4 h-4 text-[var(--archyv-accent)] focus:ring-[var(--archyv-accent)] border-gray-300"
+                className="mt-1 w-4 h-4 text-[var(--archyv-accent)] focus:ring-[var(--archyv-accent)] border-gray-300"
               />
-              <span className="text-sm font-medium text-gray-700">All Faculty</span>
+              <div>
+                <span className="text-sm font-semibold text-gray-900 block">All Faculty (Grant Edit Access)</span>
+                <span className="text-xs text-gray-500 block mt-0.5">Every faculty member can view and edit this document.</span>
+              </div>
             </label>
           </div>
         </div>
