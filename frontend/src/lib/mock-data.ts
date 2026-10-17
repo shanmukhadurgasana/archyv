@@ -1,4 +1,4 @@
-export type Role = "faculty" | "admin";
+export type Role = "faculty" | "admin" | "superadmin" | "super_admin";
 
 export interface User {
   id: string;
@@ -41,6 +41,7 @@ export interface Document {
   daysLeft?: number;
   accessList?: string[];
   year?: string;
+  academicYear?: any;
   filename?: string;
   status?: string;
   accessType?: string;
@@ -50,6 +51,7 @@ export interface Document {
   semester?: string;
   branch?: string;
   section?: string;
+  studentRegisterNumber?: string;
   canEdit?: boolean;
   mimeType?: string;
 }

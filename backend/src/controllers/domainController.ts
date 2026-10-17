@@ -109,11 +109,42 @@ export const deleteDomain = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ success: false, message: "Domain not found" });
     }
 
-    const docsCount = await prisma.document.count({ where: { domainId: id } });
-    if (docsCount > 0) {
-      return res.status(400).json({ success: false, message: "Cannot delete domain with associated documents" });
+    // Find all document IDs belonging to this domain
+    const docs = await prisma.document.findMany({
+      where: { domainId: id },
+      select: { id: true }
+    });
+    const docIds = docs.map(d => d.id);
+
+    if (docIds.length > 0) {
+      await prisma.starredDocument.deleteMany({
+        where: { documentId: { in: docIds } }
+      });
+      await prisma.documentFacultyAccess.deleteMany({
+        where: { documentId: { in: docIds } }
+      });
+      await prisma.document.deleteMany({
+        where: { id: { in: docIds } }
+      });
     }
 
+    // Unlink any documents referencing subdomains of this domain and delete subdomains
+    const subdomains = await prisma.subdomain.findMany({
+      where: { domainId: id },
+      select: { id: true }
+    });
+    const subIds = subdomains.map(s => s.id);
+    if (subIds.length > 0) {
+      await prisma.document.updateMany({
+        where: { subdomainId: { in: subIds } },
+        data: { subdomainId: null }
+      });
+      await prisma.subdomain.deleteMany({
+        where: { id: { in: subIds } }
+      });
+    }
+
+    // Delete the domain
     await prisma.domain.delete({ where: { id } });
 
     if (req.user) {
@@ -170,8 +201,16 @@ export const deleteSubdomain = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
 
-    const docsCount = await prisma.document.count({ where: { subdomainId: id } });
-    if (docsCount > 0) return res.status(400).json({ success: false, message: "Cannot delete subdomain with associated documents" });
+    const subdomain = await prisma.subdomain.findUnique({ where: { id } });
+    if (!subdomain) {
+      return res.status(404).json({ success: false, message: "Subdomain not found" });
+    }
+
+    // Unlink any documents referencing this subdomain
+    await prisma.document.updateMany({
+      where: { subdomainId: id },
+      data: { subdomainId: null }
+    });
 
     await prisma.subdomain.delete({ where: { id } });
     res.status(200).json({ success: true, message: "Subdomain deleted successfully" });

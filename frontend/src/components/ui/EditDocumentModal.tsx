@@ -21,7 +21,9 @@ export default function EditDocumentModal({ isOpen, document, onClose, isRenameA
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isAdmin = currentUser?.role?.toLowerCase() === 'admin';
+  const isAdmin = currentUser?.role?.toLowerCase() === 'admin' || 
+                  currentUser?.role?.toLowerCase() === 'superadmin' || 
+                  currentUser?.role?.toLowerCase() === 'super_admin';
   const isUploader = Boolean(
     (currentUser?.id && document?.uploadedById === currentUser.id) ||
     (currentUser?.name && document?.uploadedBy === currentUser.name) ||
@@ -65,10 +67,22 @@ export default function EditDocumentModal({ isOpen, document, onClose, isRenameA
 
   const selectedDomainObj = domains.find(d => d.name === domain);
   const isFacultyDomain = Boolean(selectedDomainObj?.isFaculty);
+  const isAdmissionsDomain = domain.trim().toLowerCase() === "admissions";
+  const isPlacementsDomain = domain.trim().toLowerCase() === "placements";
   const subdomainOptions = (selectedDomainObj?.subdomains?.map(s => s.name) || []).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
 
   const selectedBranchObj = departments.find(d => d.name === branch);
   const branchSectionOptions = (selectedBranchObj?.sections?.map(s => s.name) || []).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+
+  const formatYearOfStudy = (val: string) => {
+    if (!val || val === "None") return "";
+    const s = val.trim().toLowerCase();
+    if (s.startsWith("1") || s.includes("1st")) return "1st";
+    if (s.startsWith("2") || s.includes("2nd")) return "2nd";
+    if (s.startsWith("3") || s.includes("3rd")) return "3rd";
+    if (s.startsWith("4") || s.includes("4th")) return "4th";
+    return val.replace(/\s*(yr|year)s?/i, '').trim();
+  };
 
   // Helper to auto-generate title if desired
   const handleAutoGenerateTitle = () => {
@@ -80,17 +94,22 @@ export default function EditDocumentModal({ isOpen, document, onClose, isRenameA
       const parts = [domain, cleanSubdomain, branch !== "None" ? branch : "", cleanSection].filter(Boolean);
       const generated = parts.join(".");
       setTitle(originalExt ? `${generated}.${originalExt}` : generated);
+    } else if (isAdmissionsDomain) {
+      const formattedYear = (academicYear && academicYear !== "None") ? academicYear.split('-').map(p => p.slice(-2)).join('-') : "";
+      const effectiveBranch = (branch && branch !== "None") ? branch : "";
+      const parts = [domain, formattedYear, effectiveBranch].filter(Boolean);
+      const generated = parts.join(".");
+      setTitle(originalExt ? `${generated}.${originalExt}` : generated);
+    } else if (isPlacementsDomain) {
+      const studentSuffix = ((document as any).studentRegisterNumber || "").trim().toUpperCase().slice(-4);
+      const formattedYear = (academicYear && academicYear !== "None") ? academicYear.split('-').map(p => p.slice(-2)).join('-') : "";
+      const yosDigit = formatYearOfStudy(yearOfStudy).replace(/[^0-9]/g, '') || formatYearOfStudy(yearOfStudy);
+      const cleanSemester = (semester && semester !== "No Semester" && semester !== "None") ? semester : "";
+      const effectiveBranch = (branch && branch !== "None") ? branch : "";
+      const parts = [domain, cleanSubdomain, formattedYear, yosDigit, effectiveBranch, cleanSection, cleanSemester, studentSuffix].filter(Boolean);
+      const generated = parts.join(".");
+      setTitle(originalExt ? `${generated}.${originalExt}` : generated);
     } else {
-      const formatYearOfStudy = (val: string) => {
-        if (!val || val === "None") return "";
-        const s = val.trim().toLowerCase();
-        if (s.startsWith("1") || s.includes("1st")) return "1st";
-        if (s.startsWith("2") || s.includes("2nd")) return "2nd";
-        if (s.startsWith("3") || s.includes("3rd")) return "3rd";
-        if (s.startsWith("4") || s.includes("4th")) return "4th";
-        return val.replace(/\s*(yr|year)s?/i, '').trim();
-      };
-
       const formattedYear = (academicYear && academicYear !== "None") ? academicYear.split('-').map(p => p.slice(-2)).join('-') : "";
       const formattedYos = formatYearOfStudy(yearOfStudy);
       const cleanSemester = (semester && semester !== "No Semester" && semester !== "None") ? semester : "";
@@ -121,13 +140,13 @@ export default function EditDocumentModal({ isOpen, document, onClose, isRenameA
       const res = await updateDocument(document.id, {
         name: title.trim(),
         domain: domain || undefined,
-        subdomain: subdomain === "None" ? null : subdomain,
+        subdomain: isAdmissionsDomain ? null : (subdomain === "None" ? null : subdomain),
         academicYear: academicYear === "None" ? null : academicYear,
-        yearOfStudy: yearOfStudy === "None" ? null : yearOfStudy,
+        yearOfStudy: isAdmissionsDomain ? null : (yearOfStudy === "None" ? null : yearOfStudy),
         branch: branch === "None" ? null : branch,
         department: branch === "None" ? null : branch,
-        section: section === "None" ? null : section,
-        semester: semester === "No Semester" || semester === "None" ? null : semester
+        section: isAdmissionsDomain ? null : (section === "None" ? null : section),
+        semester: isAdmissionsDomain ? null : (semester === "No Semester" || semester === "None" ? null : semester)
       });
 
       if (res.success) {
@@ -232,87 +251,126 @@ export default function EditDocumentModal({ isOpen, document, onClose, isRenameA
                 disabled={!canEdit}
                 onChange={(v) => {
                   setDomain(v);
-                  setSubdomain("None");
+                  if (v.trim().toLowerCase() === "admissions") {
+                    setSubdomain("None");
+                    setYearOfStudy("None");
+                    setSection("None");
+                    setSemester("No Semester");
+                  } else {
+                    setSubdomain("None");
+                  }
                 }}
                 options={sortedDomains}
                 fullWidth
               />
             </div>
 
-            {/* Subdomain */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Subdomain</label>
-              <CustomDropdown
-                value={subdomain}
-                disabled={!canEdit}
-                onChange={setSubdomain}
-                options={["None", ...subdomainOptions]}
-                fullWidth
-              />
-            </div>
+            {isAdmissionsDomain ? (
+              <>
+                {/* Academic Year */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Academic Year</label>
+                  <CustomDropdown
+                    value={academicYear}
+                    disabled={!canEdit}
+                    onChange={setAcademicYear}
+                    options={["None", ...sortedAcademicYears]}
+                    fullWidth
+                  />
+                </div>
 
-            {/* Academic Year */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Academic Year</label>
-              <CustomDropdown
-                value={academicYear}
-                disabled={!canEdit}
-                onChange={setAcademicYear}
-                options={["None", ...sortedAcademicYears]}
-                fullWidth
-              />
-            </div>
+                {/* Branch / Department */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Branch</label>
+                  <CustomDropdown
+                    value={branch}
+                    disabled={!canEdit}
+                    onChange={(v) => {
+                      setBranch(v);
+                    }}
+                    options={["None", ...sortedDepartments]}
+                    fullWidth
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Subdomain */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Subdomain</label>
+                  <CustomDropdown
+                    value={subdomain}
+                    disabled={!canEdit}
+                    onChange={setSubdomain}
+                    options={["None", ...subdomainOptions]}
+                    fullWidth
+                  />
+                </div>
 
-            {/* Year of Study */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Year of Study</label>
-              <CustomDropdown
-                value={yearOfStudy}
-                disabled={!canEdit}
-                onChange={setYearOfStudy}
-                options={["None", "1st yr", "2nd yr", "3rd yr", "4th yr"]}
-                fullWidth
-              />
-            </div>
+                {/* Academic Year */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Academic Year</label>
+                  <CustomDropdown
+                    value={academicYear}
+                    disabled={!canEdit}
+                    onChange={setAcademicYear}
+                    options={["None", ...sortedAcademicYears]}
+                    fullWidth
+                  />
+                </div>
 
-            {/* Branch / Department */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Branch</label>
-              <CustomDropdown
-                value={branch}
-                disabled={!canEdit}
-                onChange={(v) => {
-                  setBranch(v);
-                  setSection("Overall Section");
-                }}
-                options={["None", ...sortedDepartments]}
-                fullWidth
-              />
-            </div>
+                {/* Year of Study */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Year of Study</label>
+                  <CustomDropdown
+                    value={yearOfStudy}
+                    disabled={!canEdit}
+                    onChange={setYearOfStudy}
+                    options={["None", "1st yr", "2nd yr", "3rd yr", "4th yr"]}
+                    fullWidth
+                  />
+                </div>
 
-            {/* Section */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Section</label>
-              <CustomDropdown
-                value={section}
-                disabled={!canEdit}
-                onChange={setSection}
-                options={["Overall Section", ...branchSectionOptions]}
-                fullWidth
-              />
-            </div>
+                {/* Branch / Department */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Branch</label>
+                  <CustomDropdown
+                    value={branch}
+                    disabled={!canEdit}
+                    onChange={(v) => {
+                      setBranch(v);
+                      setSection("Overall Section");
+                    }}
+                    options={["None", ...sortedDepartments]}
+                    fullWidth
+                  />
+                </div>
 
-            {/* Semester */}
-            <div className="space-y-1.5 sm:col-span-2">
-              <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Semester</label>
-              <CustomDropdown
-                value={semester}
-                disabled={!canEdit}
-                onChange={setSemester}
-                options={["No Semester", "Semester 1", "Semester 2"]}
-                fullWidth
-              />
-            </div>
+                {/* Section */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Section</label>
+                  <CustomDropdown
+                    value={section}
+                    disabled={!canEdit}
+                    onChange={setSection}
+                    options={["Overall Section", ...branchSectionOptions]}
+                    fullWidth
+                  />
+                </div>
+
+                {/* Semester */}
+                <div className="space-y-1.5 sm:col-span-2">
+                  <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Semester</label>
+                  <CustomDropdown
+                    value={semester}
+                    disabled={!canEdit}
+                    onChange={setSemester}
+                    options={["No Semester", "Semester 1", "Semester 2"]}
+                    fullWidth
+                  />
+                </div>
+              </>
+            )}
           </div>
 
           {/* Footer Actions */}

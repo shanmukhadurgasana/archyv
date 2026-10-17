@@ -9,7 +9,11 @@ interface HeaderProps {
 
 export default function Header({ user }: HeaderProps) {
   const { globalSearchQuery, setGlobalSearchQuery, refreshData, isRefreshing } = useAppContext();
-  const profileHref = user.role.toLowerCase() === "admin" ? "/admin/profile" : "/faculty/profile";
+  const profileHref = user.role?.toLowerCase()?.includes("super") 
+    ? "/superadmin/profile" 
+    : user.role?.toLowerCase() === "admin" 
+      ? "/admin/profile" 
+      : "/faculty/profile";
 
   return (
     <header className="h-20 border-b border-[var(--border)] bg-background flex items-center justify-between px-8 sticky top-0 z-10">

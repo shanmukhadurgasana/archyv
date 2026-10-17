@@ -3,7 +3,7 @@ import { DocumentType, DocumentAccess } from "@prisma/client";
 import jwt from "jsonwebtoken";
 import { env } from "../config/env";
 import { AuthRequest } from "../middleware/auth";
-import { uploadFileToDrive, updateFileInDrive, deleteFileFromDrive, getFileStreamFromDrive } from "../services/googleDrive.service";
+import { uploadFileToDrive, updateFileInDrive, deleteFileFromDrive, getFileStreamFromDrive, copyFileInDrive } from "../services/googleDrive.service";
 import { createAuditLog } from "../services/audit.service";
 import { prisma } from "../lib/prisma";
 
@@ -18,7 +18,7 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ success: false, message: "No file provided" });
     }
 
-    const { name: originalTitle, domain, subdomain, department, academicYear, accessType, selectedFacultyIds, branch, semester, section, yearOfStudy } = req.body;
+    const { name: originalTitle, domain, subdomain, department, academicYear, accessType, selectedFacultyIds, branch, semester, section, yearOfStudy, studentRegisterNumber } = req.body;
 
     if (!domain) {
       return res.status(400).json({ success: false, message: "Domain is required" });
@@ -31,13 +31,51 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
     }
 
     const isFacultyDomain = Boolean(domainRecord.isFaculty);
+    const isAdmissionsDomain = domain.trim().toLowerCase() === "admissions" || domainRecord.name.trim().toLowerCase() === "admissions";
+    const isPlacementsDomain = domain.trim().toLowerCase() === "placements" || domainRecord.name.trim().toLowerCase() === "placements";
 
     const effectiveBranch = branch || department;
     const cleanSection = (section && section !== "Overall Section" && section !== "N/A") ? section.trim() : "";
 
+    const formatYearOfStudy = (val: string) => {
+      if (!val) return "";
+      const s = val.trim().toLowerCase();
+      if (s.startsWith("1") || s.includes("1st") || s.includes("1 st") || s === "first" || s === "i") return "1st";
+      if (s.startsWith("2") || s.includes("2nd") || s.includes("2 nd") || s === "second" || s === "ii") return "2nd";
+      if (s.startsWith("3") || s.includes("3rd") || s.includes("3 rd") || s === "third" || s === "iii") return "3rd";
+      if (s.startsWith("4") || s.includes("4th") || s.includes("4 th") || s === "fourth" || s === "iv") return "4th";
+      return val.replace(/\s*(yr|year)s?/i, '').replace(/[/\\]\d+/g, '').trim();
+    };
+
+    let normalizedRegNumber: string | null = null;
+
     if (isFacultyDomain) {
       if (!effectiveBranch) {
         return res.status(400).json({ success: false, message: "Branch is required for faculty domain uploads" });
+      }
+    } else if (isAdmissionsDomain) {
+      if (!academicYear || !effectiveBranch) {
+        return res.status(400).json({ success: false, message: "Academic Year and Branch are required for Admissions domain uploads" });
+      }
+    } else if (isPlacementsDomain) {
+      if (!subdomain) {
+        return res.status(400).json({ success: false, message: "Subdomain is required for Placements uploads" });
+      }
+      if (!academicYear) {
+        return res.status(400).json({ success: false, message: "Academic Year is required for Placements uploads" });
+      }
+      if (!yearOfStudy) {
+        return res.status(400).json({ success: false, message: "Year of Study is required for Placements uploads" });
+      }
+      if (!effectiveBranch) {
+        return res.status(400).json({ success: false, message: "Branch is required for Placements uploads" });
+      }
+      if (!studentRegisterNumber || typeof studentRegisterNumber !== "string") {
+        return res.status(400).json({ success: false, message: "Student Register Number is required for Placements uploads" });
+      }
+      normalizedRegNumber = studentRegisterNumber.trim().toUpperCase();
+      if (!/^[A-Z0-9]{10}$/.test(normalizedRegNumber)) {
+        return res.status(400).json({ success: false, message: "Student Register Number must be exactly 10 alphanumeric characters (e.g. 24B91A07A5)" });
       }
     } else {
       if (!academicYear || !effectiveBranch || !yearOfStudy) {
@@ -51,17 +89,29 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
     if (isFacultyDomain) {
       const parts = [domain, subdomain, effectiveBranch, cleanSection].filter(Boolean);
       generatedName = `${parts.join(".")}${originalExt ? "." + originalExt : ""}`;
+    } else if (isAdmissionsDomain) {
+      const formattedYear = academicYear ? academicYear.split('-').map((p: string) => p.slice(-2)).join('-') : "";
+      const parts = [domain, formattedYear, effectiveBranch].filter(Boolean);
+      generatedName = `${parts.join(".")}${originalExt ? "." + originalExt : ""}`;
+    } else if (isPlacementsDomain) {
+      const studentSuffix = normalizedRegNumber ? normalizedRegNumber.slice(-4) : "";
+      const formattedYear = academicYear ? academicYear.split('-').map((p: string) => p.slice(-2)).join('-') : "";
+      const yosDigit = formatYearOfStudy(yearOfStudy).replace(/[^0-9]/g, '') || formatYearOfStudy(yearOfStudy);
+      const cleanSemester = (semester && semester !== "No Semester" && semester !== "None") ? String(semester).trim() : "";
+      // Format: domain.subdomain.academic yaer(last4 numbers like 25-26),year os study(1,2,3,4),branch,section(if there is section sin that branch),sem(optinal),redg number(last 4 characters)...
+      const parts = [
+        domain,
+        subdomain,
+        formattedYear,
+        yosDigit,
+        effectiveBranch,
+        cleanSection,
+        cleanSemester,
+        studentSuffix
+      ].filter(Boolean);
+      generatedName = `${parts.join(".")}${originalExt ? "." + originalExt : ""}`;
     } else {
       const formattedYear = academicYear ? academicYear.split('-').map((p: string) => p.slice(-2)).join('-') : "";
-      const formatYearOfStudy = (val: string) => {
-        if (!val) return "";
-        const s = val.trim().toLowerCase();
-        if (s.startsWith("1") || s.includes("1st") || s.includes("1 st") || s === "first" || s === "i") return "1st";
-        if (s.startsWith("2") || s.includes("2nd") || s.includes("2 nd") || s === "second" || s === "ii") return "2nd";
-        if (s.startsWith("3") || s.includes("3rd") || s.includes("3 rd") || s === "third" || s === "iii") return "3rd";
-        if (s.startsWith("4") || s.includes("4th") || s.includes("4 th") || s === "fourth" || s === "iv") return "4th";
-        return val.replace(/\s*(yr|year)s?/i, '').replace(/[/\\]\d+/g, '').trim();
-      };
       const formattedYos = formatYearOfStudy(yearOfStudy);
       const cleanSemester = (semester && semester !== "No Semester" && semester !== "None") ? String(semester).trim() : "";
       // domain.academicyear.yearofstuding.branch.section.sem.subdomain
@@ -72,13 +122,17 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
 
     // Lookup Foreign Keys Concurrently
     const [deptRecord, yearRecord, subdomainRecord] = await Promise.all([
-      effectiveBranch ? prisma.department.findUnique({ where: { name: effectiveBranch } }) : Promise.resolve(null),
+      effectiveBranch ? prisma.department.findUnique({ where: { name: effectiveBranch }, include: { sections: true } }) : Promise.resolve(null),
       academicYear ? prisma.academicYear.findUnique({ where: { year: academicYear } }) : Promise.resolve(null),
       subdomain ? prisma.subdomain.findFirst({ where: { name: subdomain, domain: { name: domain } } }) : Promise.resolve(null)
     ]);
 
     if (effectiveBranch && !deptRecord) {
       return res.status(400).json({ success: false, message: `Branch '${effectiveBranch}' not found` });
+    }
+
+    if (isPlacementsDomain && deptRecord?.sections && deptRecord.sections.length > 0 && !cleanSection) {
+      return res.status(400).json({ success: false, message: `Section is required for branch '${effectiveBranch}'` });
     }
 
     if (!isFacultyDomain && academicYear && !yearRecord) {
@@ -138,7 +192,17 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
       }
     }
 
-    // 2. Create Prisma Document
+    // 2. Create or find Student record if student register number is provided
+    let studentRecord = null;
+    if (normalizedRegNumber) {
+      studentRecord = await prisma.student.upsert({
+        where: { registerNumber: normalizedRegNumber },
+        update: {},
+        create: { registerNumber: normalizedRegNumber }
+      });
+    }
+
+    // 3. Create Prisma Document
     try {
       const document = await prisma.document.create({
         data: {
@@ -149,14 +213,16 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
           mimeType: uploadResult.mimeType,
           uploadedById: req.user.id,
           domainId: domainRecord.id,
-          subdomainId: subdomainRecord?.id || null,
+          subdomainId: isAdmissionsDomain ? null : (subdomainRecord?.id || null),
           departmentId,
-          sectionId: sectionRecord?.id || null,
+          sectionId: isAdmissionsDomain ? null : (sectionRecord?.id || null),
           academicYearId: isFacultyDomain ? null : academicYearId,
-          yearOfStudy: isFacultyDomain ? null : yearOfStudy,
+          yearOfStudy: (isFacultyDomain || isAdmissionsDomain) ? null : yearOfStudy,
           branch: effectiveBranch || null,
-          semester: isFacultyDomain ? null : ((semester && semester !== "No Semester" && semester !== "None") ? String(semester).trim() : null),
-          section: cleanSection || null,
+          semester: (isFacultyDomain || isAdmissionsDomain) ? null : ((semester && semester !== "No Semester" && semester !== "None") ? String(semester).trim() : null),
+          section: (isFacultyDomain || isAdmissionsDomain) ? null : (cleanSection || null),
+          studentId: studentRecord?.id || null,
+          studentRegisterNumber: normalizedRegNumber || null,
           status: req.user.role?.toUpperCase() === 'ADMIN' ? 'APPROVED' : 'PENDING',
           accessType: parsedAccessType,
           facultyAccess: facultyAccessData.length > 0 ? {
@@ -169,6 +235,7 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
           sectionRel: { select: { name: true } },
           academicYear: { select: { year: true } },
           subdomain: { select: { name: true } },
+          student: { select: { registerNumber: true } },
           uploadedBy: { select: { name: true } },
           facultyAccess: { select: { facultyId: true } }
         }
@@ -189,6 +256,7 @@ export const createDocument = async (req: AuthRequest, res: Response) => {
         semester: document.semester,
         branch: document.branch,
         section: document.section,
+        studentRegisterNumber: document.studentRegisterNumber || document.student?.registerNumber || null,
         uploadedBy: document.uploadedBy?.name || "Unknown User",
         uploaderRole: req.user.role,
         uploadedById: document.uploadedById,
@@ -278,8 +346,13 @@ export const getDocuments = async (req: AuthRequest, res: Response) => {
     if (search) {
       where.OR = [
         { name: { contains: search as string, mode: "insensitive" } },
+        { studentRegisterNumber: { contains: search as string, mode: "insensitive" } },
         { uploadedBy: { name: { contains: search as string, mode: "insensitive" } } },
       ];
+    }
+
+    if (req.query.studentRegisterNumber) {
+      where.studentRegisterNumber = (req.query.studentRegisterNumber as string).trim().toUpperCase();
     }
 
     // 3. Filters
@@ -326,7 +399,7 @@ export const getDocuments = async (req: AuthRequest, res: Response) => {
       where.yearOfStudy = yearOfStudy as string;
     }
 
-    if ((userRole as string) === 'ADMIN' || (userRole as string) === 'admin') {
+    if ((userRole as string)?.toUpperCase() === 'ADMIN' || (userRole as string)?.toUpperCase() === 'SUPER_ADMIN') {
       if (faculty && faculty !== "All Faculty") {
         where.uploadedBy = { name: faculty as string };
       }
@@ -388,6 +461,8 @@ export const getDocuments = async (req: AuthRequest, res: Response) => {
           semester: true,
           branch: true,
           section: true,
+          studentRegisterNumber: true,
+          studentId: true,
           uploadedBy: { select: { name: true, role: true } },
           uploadedById: true,
           starredByUsers: { select: { userId: true }, where: { userId } },
@@ -400,7 +475,7 @@ export const getDocuments = async (req: AuthRequest, res: Response) => {
     ]);
 
     // Map to frontend Document interface
-    const isAdmin = (userRole as string)?.toUpperCase() === 'ADMIN';
+    const isAdmin = (userRole as string)?.toUpperCase() === 'ADMIN' || (userRole as string)?.toUpperCase() === 'SUPER_ADMIN';
     const mappedDocs = documents.map(doc => {
       const isOwner = Boolean(userId && doc.uploadedById === userId);
       const isFacultyGranted = doc.accessType === 'ALL_FACULTY' || 
@@ -422,6 +497,7 @@ export const getDocuments = async (req: AuthRequest, res: Response) => {
         semester: doc.semester,
         branch: doc.branch,
         section: doc.section,
+        studentRegisterNumber: doc.studentRegisterNumber || null,
         uploadedBy: doc.uploadedBy?.name || "Unknown User",
         uploaderRole: doc.uploadedBy?.role || null,
         uploadedById: doc.uploadedById,
@@ -1324,6 +1400,7 @@ export const updateDocument = async (req: AuthRequest, res: Response) => {
       semester: updatedDocument.semester,
       branch: updatedDocument.branch,
       section: updatedDocument.section,
+      studentRegisterNumber: updatedDocument.studentRegisterNumber || null,
       uploadedBy: updatedDocument.uploadedBy?.name,
       uploaderRole: updatedDocument.uploadedBy?.role || null,
       uploadedById: updatedDocument.uploadedById,
@@ -1641,14 +1718,74 @@ export const getDocumentContent = async (req: AuthRequest, res: Response) => {
       const stream = await getFileStreamFromDrive(fileId);
       const chunks: Buffer[] = [];
       stream.on('data', (c: any) => chunks.push(c));
-      stream.on('end', () => {
+      stream.on('end', async () => {
         const buffer = Buffer.concat(chunks);
         const ext = document.name.split('.').pop()?.toLowerCase();
-        const isTextOrCsv = ext === 'csv' || ext === 'txt' || ext === 'json' || ext === 'md';
+        const isTextOrCsv = ext === 'csv' || ext === 'txt' || ext === 'json' || ext === 'md' || ext === 'log';
+        const isDocx = ext === 'docx' || ext === 'doc';
+        const isPptx = ext === 'pptx' || ext === 'ppt';
+        const isPdf = ext === 'pdf' || document.type === 'PDF';
         
         let content = "";
+        let isTextDocument = isTextOrCsv;
         if (isTextOrCsv) {
           content = buffer.toString('utf-8');
+        } else if (isDocx) {
+          try {
+            const mammoth = require('mammoth');
+            const result = await mammoth.extractRawText({ buffer });
+            content = result.value || "";
+          } catch (mErr) {
+            console.warn("Mammoth extraction notice:", mErr);
+          }
+          // If file was uploaded with .docx extension but contains plain text or formatted text
+          if (!content) {
+            const raw = buffer.toString('utf-8');
+            if (/^[\x20-\x7E\r\n\t]{10,}/.test(raw)) {
+              content = raw;
+            }
+          }
+          isTextDocument = true;
+        } else if (isPptx) {
+          try {
+            const JSZip = require('jszip');
+            const zip = await JSZip.loadAsync(buffer);
+            const slideFiles = Object.keys(zip.files)
+              .filter(f => f.startsWith('ppt/slides/slide') && f.endsWith('.xml'))
+              .sort((a, b) => {
+                const numA = parseInt(a.replace(/[^0-9]/g, '')) || 0;
+                const numB = parseInt(b.replace(/[^0-9]/g, '')) || 0;
+                return numA - numB;
+              });
+
+            const slideTexts: string[] = [];
+            for (let i = 0; i < slideFiles.length; i++) {
+              const slidePath = slideFiles[i];
+              const xml = await zip.files[slidePath]?.async('string');
+              if (xml) {
+                const textMatches = [...xml.matchAll(/<a:t>([^<]+)<\/a:t>/g)]
+                  .map(m => m[1].trim())
+                  .filter(Boolean);
+                if (textMatches.length > 0) {
+                  slideTexts.push(`--- Slide ${i + 1} ---\n${textMatches.join('\n')}`);
+                }
+              }
+            }
+            content = slideTexts.join('\n\n');
+            isTextDocument = true;
+          } catch (pErr) {
+            console.warn("Could not extract slides from pptx:", pErr);
+          }
+        } else if (isPdf) {
+          try {
+            const { PDFParse } = require('pdf-parse');
+            const parser = new PDFParse(new Uint8Array(buffer));
+            const pdfResult = await parser.getText();
+            content = pdfResult?.text || (typeof pdfResult === 'string' ? pdfResult : "");
+            isTextDocument = true;
+          } catch (pdfErr) {
+            console.warn("Could not extract text from pdf:", pdfErr);
+          }
         }
 
         res.status(200).json({
@@ -1658,7 +1795,7 @@ export const getDocumentContent = async (req: AuthRequest, res: Response) => {
           type: document.type,
           sizeBytes: document.sizeBytes ? document.sizeBytes.toString() : buffer.length.toString(),
           content,
-          isTextOrCsv,
+          isTextOrCsv: isTextDocument,
           ext
         });
       });
@@ -1688,5 +1825,122 @@ export const getDocumentContent = async (req: AuthRequest, res: Response) => {
     res.status(500).json({ success: false, message: "Failed to fetch document content" });
   }
 };
+
+export const duplicateDocument = async (req: AuthRequest, res: Response) => {
+  try {
+    const documentId = req.params.id;
+    const originalDoc = await prisma.document.findUnique({
+      where: { id: documentId },
+      include: {
+        domain: { select: { name: true } },
+        department: { select: { name: true } },
+        sectionRel: { select: { name: true } },
+        academicYear: { select: { year: true } },
+        subdomain: { select: { name: true } },
+        uploadedBy: { select: { name: true } },
+        facultyAccess: { select: { facultyId: true } }
+      }
+    });
+
+    if (!originalDoc || originalDoc.isDeleted) {
+      return res.status(404).json({ success: false, message: "Document not found" });
+    }
+
+    // Determine duplicated file title having .copy extension
+    // If original name is "File.pdf" -> base title is "File" -> new name is "File.copy"
+    // If original is "File" -> new name is "File.copy"
+    let baseTitle = originalDoc.name;
+    const lastDotIndex = originalDoc.name.lastIndexOf('.');
+    if (lastDotIndex > 0) {
+      baseTitle = originalDoc.name.substring(0, lastDotIndex);
+    }
+    const newName = `${baseTitle}.copy`;
+
+    // Duplicate in Google Drive if googleDriveFileId is present
+    let newDriveFileId = originalDoc.googleDriveFileId;
+    if (originalDoc.googleDriveFileId) {
+      const copyResult = await copyFileInDrive(originalDoc.googleDriveFileId, newName);
+      if (copyResult && copyResult.fileId) {
+        newDriveFileId = copyResult.fileId;
+      }
+    }
+
+    // Create the duplicate document in DB
+    const duplicatedDoc = await prisma.document.create({
+      data: {
+        name: newName,
+        type: originalDoc.type,
+        sizeBytes: originalDoc.sizeBytes,
+        googleDriveFileId: newDriveFileId,
+        mimeType: originalDoc.mimeType,
+        status: req.user?.role?.toUpperCase() === 'ADMIN' ? 'APPROVED' : originalDoc.status,
+        uploadedById: req.user?.id || originalDoc.uploadedById,
+        departmentId: originalDoc.departmentId,
+        sectionId: originalDoc.sectionId,
+        domainId: originalDoc.domainId,
+        subdomainId: originalDoc.subdomainId,
+        academicYearId: originalDoc.academicYearId,
+        yearOfStudy: originalDoc.yearOfStudy,
+        semester: originalDoc.semester,
+        branch: originalDoc.branch,
+        section: originalDoc.section,
+        studentId: originalDoc.studentId,
+        studentRegisterNumber: originalDoc.studentRegisterNumber,
+        accessType: originalDoc.accessType,
+        facultyAccess: originalDoc.facultyAccess?.length ? {
+          create: originalDoc.facultyAccess.map((fa: any) => ({
+            facultyId: fa.facultyId
+          }))
+        } : undefined
+      },
+      include: {
+        domain: { select: { name: true } },
+        department: { select: { name: true } },
+        sectionRel: { select: { name: true } },
+        academicYear: { select: { year: true } },
+        subdomain: { select: { name: true } },
+        uploadedBy: { select: { name: true } },
+        facultyAccess: { select: { facultyId: true } }
+      }
+    });
+
+    const serializedDoc = {
+      id: duplicatedDoc.id,
+      name: duplicatedDoc.name,
+      type: duplicatedDoc.type,
+      size: duplicatedDoc.sizeBytes ? `${(Number(duplicatedDoc.sizeBytes) / (1024 * 1024)).toFixed(2)} MB` : "Unknown",
+      date: duplicatedDoc.createdAt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+      time: duplicatedDoc.createdAt.toLocaleTimeString("en-US", { hour: '2-digit', minute: '2-digit' }),
+      domain: duplicatedDoc.domain?.name,
+      department: duplicatedDoc.department?.name,
+      year: duplicatedDoc.academicYear?.year,
+      subdomain: duplicatedDoc.subdomain?.name || null,
+      yearOfStudy: duplicatedDoc.yearOfStudy,
+      semester: duplicatedDoc.semester,
+      branch: duplicatedDoc.branch,
+      section: duplicatedDoc.section,
+      studentRegisterNumber: duplicatedDoc.studentRegisterNumber || null,
+      uploadedBy: duplicatedDoc.uploadedBy?.name || (req.user as any)?.name || "Unknown User",
+      uploaderRole: req.user?.role || "ADMIN",
+      uploadedById: duplicatedDoc.uploadedById,
+      isStarred: false,
+      status: duplicatedDoc.status,
+      filename: duplicatedDoc.name,
+      accessType: duplicatedDoc.accessType,
+      facultyAccess: duplicatedDoc.facultyAccess,
+      canEdit: true,
+    };
+
+    if (req.user) {
+      createAuditLog(req.user.id, "UPLOAD_DOCUMENT", newName, duplicatedDoc.domain?.name || "").catch(console.error);
+    }
+
+    return res.status(201).json({ success: true, document: serializedDoc });
+  } catch (error) {
+    console.error("Duplicate document error:", error);
+    return res.status(500).json({ success: false, message: "Failed to duplicate document" });
+  }
+};
+
 
 

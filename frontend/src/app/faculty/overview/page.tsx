@@ -14,8 +14,14 @@ export default function FacultyOverview() {
   // Faculty can browse all active, approved files
   const allFiles = documents.filter((f: any) => !f.isDeleted && f.status === "APPROVED");
 
-  const [path, setPath] = useState<string[]>([]);
-  // path[0] = domain, path[1] = academicYear, path[2] = yearOfStudy, path[3] = branch, path[4] = section, path[5] = semester, path[6] = subdomain
+  type CrumbType = "domain" | "subdomain" | "academicYear" | "yearOfStudy" | "branch" | "section" | "semester" | "student";
+  interface PathCrumb {
+    type: CrumbType;
+    value: string;
+    label: string;
+  }
+
+  const [path, setPath] = useState<PathCrumb[]>([]);
 
   // Normalization and robust getters for document fields
   const normalize = (val: any) => String(val || "").trim().toLowerCase();
@@ -29,8 +35,8 @@ export default function FacultyOverview() {
   };
   const normalizeSem = (val: any) => {
     const s = String(val || "").trim().toLowerCase();
-    if (s === "1" || s === "sem 1" || s === "semester 1" || s === "sem-1" || s === "semester-1") return "1";
-    if (s === "2" || s === "sem 2" || s === "semester 2" || s === "sem-2" || s === "semester-2") return "2";
+    if (s === "1" || s === "sem 1" || s === "semester 1" || s === "sem-1" || s === "semester-1" || s === "odd" || s === "odd semester") return "1";
+    if (s === "2" || s === "sem 2" || s === "semester 2" || s === "sem-2" || s === "semester-2" || s === "even" || s === "even semester") return "2";
     return "";
   };
   const normalizeSec = (val: any) => {
@@ -46,10 +52,12 @@ export default function FacultyOverview() {
   const getDocDomain = (f: any) => (typeof f.domain === "object" ? f.domain?.name : f.domain) || "";
   const getDocYear = (f: any) => (typeof f.academicYear === "object" ? f.academicYear?.year : (f.year || f.academicYear)) || "";
   const getDocYearOfStudy = (f: any) => f.yearOfStudy || "";
-  const getDocDept = (f: any) => f.branch || (typeof f.department === "object" ? f.department?.name : f.department) || "";
+  const getDocBranch = (f: any) => f.branch || (typeof f.department === "object" ? f.department?.name : f.department) || "";
+  const getDocDept = getDocBranch;
   const getDocSection = (f: any) => f.section || (typeof f.sectionRel === "object" ? f.sectionRel?.name : "") || "";
   const getDocSem = (f: any) => f.semester || "";
   const getDocSubdomain = (f: any) => (typeof f.subdomain === "object" ? f.subdomain?.name : f.subdomain) || "";
+  const getDocStudentRegisterNumber = (f: any) => (f.studentRegisterNumber || "").trim().toUpperCase();
 
   // Dynamic domain stats for quick access
   const domainStats = domains.map((domain: any) => {
@@ -112,18 +120,17 @@ export default function FacultyOverview() {
                 </button>
                 {path.map((crumb, idx) => {
                   const isLast = idx === path.length - 1;
-                  const displayCrumb = (crumb === "No Semester" || crumb === "No Subdomain") ? "Direct Files" : crumb;
                   return (
                     <div key={idx} className="flex items-center gap-1.5">
                       <ChevronRight className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                       {isLast ? (
-                        <span className="font-semibold text-foreground">{displayCrumb}</span>
+                        <span className="font-semibold text-foreground">{crumb.label}</span>
                       ) : (
                         <button
                           onClick={() => setPath(path.slice(0, idx + 1))}
                           className="font-medium text-gray-500 hover:text-foreground hover:underline transition-colors"
                         >
-                          {displayCrumb}
+                          {crumb.label}
                         </button>
                       )}
                     </div>
@@ -141,546 +148,279 @@ export default function FacultyOverview() {
               <p className="text-sm text-gray-500">Loading files...</p>
             </div>
           ) : (() => {
+            // Level 0: Domains view
             if (path.length === 0) {
+              const sortedDomains = [...domains].sort((a: any, b: any) => a.name.localeCompare(b.name));
               return (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                  {[...domainStats].sort((a: any, b: any) => a.name.localeCompare(b.name)).map((stat: any) => {
-                    const domObj = domains.find((d: any) => normalize(d.name) === normalize(stat.name));
+                  {sortedDomains.map((dom: any) => {
+                    const count = allFiles.filter((f: any) => normalize(getDocDomain(f)) === normalize(dom.name)).length;
                     return (
-                      <div key={stat.id} onClick={() => setPath([stat.name])}>
-                        <DomainCard name={stat.name} count={stat.count} isFaculty={domObj?.isFaculty} />
+                      <div key={dom.id} onClick={() => setPath([{ type: "domain", value: dom.name, label: dom.name }])} className="h-full">
+                        <DomainCard name={dom.name} count={count} isFaculty={dom.isFaculty} />
                       </div>
                     );
                   })}
-                  {domainStats.length === 0 && (
-                    <p className="text-gray-400 col-span-full text-center py-8">No domains available.</p>
-                  )}
+                  {sortedDomains.length === 0 && <p className="text-gray-400 col-span-full text-center py-8">No domains available.</p>}
                 </div>
               );
             }
 
-            const selectedDomainObj = domains.find((d: any) => normalize(d.name) === normalize(path[0]));
-            const isCurrentFacultyDomain = Boolean(selectedDomainObj?.isFaculty);
+            const selectedDomain = path.find(c => c.type === "domain")?.value;
+            const selectedDomainObj = domains.find((d: any) => normalize(d.name) === normalize(selectedDomain));
 
-            if (isCurrentFacultyDomain) {
-              const domainSubdomains = (selectedDomainObj?.subdomains || []).map((s: any) => s.name).sort();
-              const hasSubdomains = domainSubdomains.length > 0;
+            // Filter active files based on all currently applied crumbs in path
+            let currentFiles = allFiles.filter((f: any) => normalize(getDocDomain(f)) === normalize(selectedDomain));
 
-              // Build branch list for faculty domain
-              const facultyBranchesSet = new Set<string>();
-              departments.forEach((d: any) => { if (d.name) facultyBranchesSet.add(d.name); });
-              facultyBranchesSet.add("CSD");
-              facultyBranchesSet.add("CSIT");
-              allFiles.forEach((f: any) => {
-                if (normalize(getDocDomain(f)) === normalize(path[0])) {
-                  const d = getDocDept(f);
-                  if (d) facultyBranchesSet.add(d);
-                }
-              });
-              const branches = Array.from(facultyBranchesSet).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
-
-              if (!hasSubdomains) {
-                // Flow: Domain -> Branch -> (Section if exists) -> Files
-                if (path.length === 1) {
-                  return (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      {branches.map((b: string) => {
-                        const count = allFiles.filter((f: any) =>
-                          normalize(getDocDomain(f)) === normalize(path[0]) &&
-                          normalize(getDocDept(f)) === normalize(b)
-                        ).length;
-                        return (
-                          <div key={b} onClick={() => setPath([...path, b])} className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors">
-                            <div className="w-12 h-12 relative mb-2"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
-                            <span className="font-semibold text-sm">{b}</span>
-                            <span className="text-xs text-gray-400 mt-1">{count} {count === 1 ? "file" : "files"}</span>
-                          </div>
-                        );
-                      })}
-                      {branches.length === 0 && <p className="text-gray-400 col-span-full text-center py-8">No branches available.</p>}
-                    </div>
-                  );
-                }
-
-                const selectedBranchObj = departments.find((d: any) => normalize(d.name) === normalize(path[1]));
-                const branchSections = (selectedBranchObj?.sections || []).map((s: any) => s.name);
-                const facultySectionsSet = new Set<string>(branchSections);
-                allFiles.forEach((f: any) => {
-                  if (normalize(getDocDomain(f)) === normalize(path[0]) && normalize(getDocDept(f)) === normalize(path[1])) {
-                    const s = getDocSection(f);
-                    if (s && normalize(s) !== "overall section" && normalize(s) !== "overall" && normalize(s) !== "none") {
-                      facultySectionsSet.add(s);
-                    }
-                  }
-                });
-                const facSections = Array.from(facultySectionsSet).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
-
-                if (facSections.length > 0 && path.length === 2) {
-                  const overallCount = allFiles.filter((f: any) => {
-                    if (normalize(getDocDomain(f)) !== normalize(path[0]) || normalize(getDocDept(f)) !== normalize(path[1])) return false;
-                    const sec = normalize(getDocSection(f));
-                    return !sec || sec === "overall section" || sec === "overall" || sec === "none";
-                  }).length;
-
-                  return (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div onClick={() => setPath([...path, "Overall Section"])} className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors">
-                        <div className="w-12 h-12 relative mb-2"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
-                        <span className="font-semibold text-sm">Overall Section</span>
-                        <span className="text-xs text-gray-400 mt-1">{overallCount} {overallCount === 1 ? "file" : "files"}</span>
-                      </div>
-                      {facSections.map((sec: string) => {
-                        const count = allFiles.filter((f: any) =>
-                          normalize(getDocDomain(f)) === normalize(path[0]) &&
-                          normalize(getDocDept(f)) === normalize(path[1]) &&
-                          normalize(getDocSection(f)) === normalize(sec)
-                        ).length;
-                        return (
-                          <div key={sec} onClick={() => setPath([...path, sec])} className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors">
-                            <div className="w-12 h-12 relative mb-2"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
-                            <span className="font-semibold text-sm">{sec}</span>
-                            <span className="text-xs text-gray-400 mt-1">{count} {count === 1 ? "file" : "files"}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                }
-
-                // Show files for Domain -> Branch (-> Section)
-                const branchFiles = allFiles.filter((f: any) => {
-                  if (normalize(getDocDomain(f)) !== normalize(path[0])) return false;
-                  if (normalize(getDocDept(f)) !== normalize(path[1])) return false;
-                  if (path[2]) {
-                    const sec = normalize(getDocSection(f));
-                    if (path[2] === "Overall Section") {
-                      if (sec && sec !== "overall section" && sec !== "overall" && sec !== "none") return false;
-                    } else {
-                      if (sec !== normalize(path[2])) return false;
-                    }
-                  }
-                  return true;
-                });
-                return (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {branchFiles.map((file: any) => (
-                      <FileCard key={file.id} file={file} />
-                    ))}
-                    {branchFiles.length === 0 && <p className="text-gray-400 col-span-full text-center py-8">No files found.</p>}
-                  </div>
-                );
+            const selectedSubdomainCrumb = path.find(c => c.type === "subdomain");
+            if (selectedSubdomainCrumb) {
+              if (selectedSubdomainCrumb.value === "__DIRECT__") {
+                currentFiles = currentFiles.filter((f: any) => !getDocSubdomain(f));
               } else {
-                // Flow if subdomains exist: Domain -> Subdomain -> Branch -> (Section if exists) -> Files
-                if (path.length === 1) {
-                  const directCount = allFiles.filter((f: any) => {
-                    if (normalize(getDocDomain(f)) !== normalize(path[0])) return false;
-                    const sub = normalize(getDocSubdomain(f));
-                    return !sub || sub === "no subdomain" || sub === "none";
-                  }).length;
+                currentFiles = currentFiles.filter((f: any) => normalize(getDocSubdomain(f)) === normalize(selectedSubdomainCrumb.value));
+              }
+            }
 
-                  return (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div onClick={() => setPath([...path, "No Subdomain"])} className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors">
-                        <div className="w-12 h-12 relative mb-2"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
-                        <span className="font-semibold text-sm">Direct Files</span>
-                        <span className="text-xs text-gray-400 mt-1">{directCount} {directCount === 1 ? "file" : "files"}</span>
-                      </div>
-                      {domainSubdomains.map((s: string) => {
-                        const subCount = allFiles.filter((f: any) =>
-                          normalize(getDocDomain(f)) === normalize(path[0]) &&
-                          normalize(getDocSubdomain(f)) === normalize(s)
-                        ).length;
-                        return (
-                          <div key={s} onClick={() => setPath([...path, s])} className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors">
-                            <div className="w-12 h-12 relative mb-2"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
-                            <span className="font-semibold text-sm">{s}</span>
-                            <span className="text-xs text-gray-400 mt-1">{subCount} {subCount === 1 ? "file" : "files"}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                }
+            const selectedYearCrumb = path.find(c => c.type === "academicYear");
+            if (selectedYearCrumb) {
+              if (selectedYearCrumb.value === "__DIRECT__") {
+                currentFiles = currentFiles.filter((f: any) => !getDocYear(f));
+              } else {
+                currentFiles = currentFiles.filter((f: any) => normalize(getDocYear(f)) === normalize(selectedYearCrumb.value));
+              }
+            }
 
-                if (path.length === 2) {
-                  return (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      {branches.map((b: string) => {
-                        const count = allFiles.filter((f: any) => {
-                          if (normalize(getDocDomain(f)) !== normalize(path[0])) return false;
-                          if (path[1] === "No Subdomain") {
-                            const sub = normalize(getDocSubdomain(f));
-                            if (sub && sub !== "no subdomain" && sub !== "none") return false;
-                          } else {
-                            if (normalize(getDocSubdomain(f)) !== normalize(path[1])) return false;
-                          }
-                          return normalize(getDocDept(f)) === normalize(b);
-                        }).length;
+            const selectedYosCrumb = path.find(c => c.type === "yearOfStudy");
+            if (selectedYosCrumb) {
+              currentFiles = currentFiles.filter((f: any) => normalizeYos(getDocYearOfStudy(f)) === normalizeYos(selectedYosCrumb.value));
+            }
 
-                        return (
-                          <div key={b} onClick={() => setPath([...path, b])} className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors">
-                            <div className="w-12 h-12 relative mb-2"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
-                            <span className="font-semibold text-sm">{b}</span>
-                            <span className="text-xs text-gray-400 mt-1">{count} {count === 1 ? "file" : "files"}</span>
-                          </div>
-                        );
-                      })}
-                      {branches.length === 0 && <p className="text-gray-400 col-span-full text-center py-8">No branches available.</p>}
-                    </div>
-                  );
-                }
+            const selectedBranchCrumb = path.find(c => c.type === "branch");
+            if (selectedBranchCrumb) {
+              if (selectedBranchCrumb.value === "__DIRECT__") {
+                currentFiles = currentFiles.filter((f: any) => !getDocBranch(f));
+              } else {
+                currentFiles = currentFiles.filter((f: any) => normalize(getDocBranch(f)) === normalize(selectedBranchCrumb.value));
+              }
+            }
 
-                const selectedBranchObj = departments.find((d: any) => normalize(d.name) === normalize(path[2]));
-                const branchSections = (selectedBranchObj?.sections || []).map((s: any) => s.name);
-                const facultySectionsSet = new Set<string>(branchSections);
-                allFiles.forEach((f: any) => {
-                  if (normalize(getDocDomain(f)) === normalize(path[0]) && normalize(getDocDept(f)) === normalize(path[2])) {
-                    const s = getDocSection(f);
-                    if (s && normalize(s) !== "overall section" && normalize(s) !== "overall" && normalize(s) !== "none") {
-                      facultySectionsSet.add(s);
-                    }
-                  }
-                });
-                const facSections = Array.from(facultySectionsSet).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
+            const selectedSectionCrumb = path.find(c => c.type === "section");
+            if (selectedSectionCrumb) {
+              if (selectedSectionCrumb.value === "__OVERALL__") {
+                currentFiles = currentFiles.filter((f: any) => !cleanSectionName(getDocSection(f)));
+              } else {
+                currentFiles = currentFiles.filter((f: any) => cleanSectionName(getDocSection(f)).toLowerCase() === selectedSectionCrumb.value.toLowerCase());
+              }
+            }
 
-                if (facSections.length > 0 && path.length === 3) {
-                  const overallCount = allFiles.filter((f: any) => {
-                    if (normalize(getDocDomain(f)) !== normalize(path[0]) || normalize(getDocDept(f)) !== normalize(path[2])) return false;
-                    if (path[1] === "No Subdomain") {
-                      const sub = normalize(getDocSubdomain(f));
-                      if (sub && sub !== "no subdomain" && sub !== "none") return false;
-                    } else {
-                      if (normalize(getDocSubdomain(f)) !== normalize(path[1])) return false;
-                    }
-                    const sec = normalize(getDocSection(f));
-                    return !sec || sec === "overall section" || sec === "overall" || sec === "none";
-                  }).length;
+            const selectedSemesterCrumb = path.find(c => c.type === "semester");
+            if (selectedSemesterCrumb) {
+              if (selectedSemesterCrumb.value === "__NONE__") {
+                currentFiles = currentFiles.filter((f: any) => !normalizeSem(getDocSem(f)));
+              } else {
+                currentFiles = currentFiles.filter((f: any) => normalizeSem(getDocSem(f)) === selectedSemesterCrumb.value);
+              }
+            }
 
-                  return (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div onClick={() => setPath([...path, "Overall Section"])} className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors">
-                        <div className="w-12 h-12 relative mb-2"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
-                        <span className="font-semibold text-sm">Overall Section</span>
-                        <span className="text-xs text-gray-400 mt-1">{overallCount} {overallCount === 1 ? "file" : "files"}</span>
-                      </div>
-                      {facSections.map((sec: string) => {
-                        const count = allFiles.filter((f: any) => {
-                          if (normalize(getDocDomain(f)) !== normalize(path[0])) return false;
-                          if (path[1] === "No Subdomain") {
-                            const sub = normalize(getDocSubdomain(f));
-                            if (sub && sub !== "no subdomain" && sub !== "none") return false;
-                          } else {
-                            if (normalize(getDocSubdomain(f)) !== normalize(path[1])) return false;
-                          }
-                          if (normalize(getDocDept(f)) !== normalize(path[2])) return false;
-                          return normalize(getDocSection(f)) === normalize(sec);
-                        }).length;
+            const selectedStudentCrumb = path.find(c => c.type === "student");
+            if (selectedStudentCrumb) {
+              if (selectedStudentCrumb.value === "__DIRECT__") {
+                currentFiles = currentFiles.filter((f: any) => !getDocStudentRegisterNumber(f));
+              } else {
+                currentFiles = currentFiles.filter((f: any) => getDocStudentRegisterNumber(f) === selectedStudentCrumb.value.toUpperCase());
+              }
+            }
 
-                        return (
-                          <div key={sec} onClick={() => setPath([...path, sec])} className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors">
-                            <div className="w-12 h-12 relative mb-2"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
-                            <span className="font-semibold text-sm">{sec}</span>
-                            <span className="text-xs text-gray-400 mt-1">{count} {count === 1 ? "file" : "files"}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                }
-
-                // Show files
-                const branchFiles = allFiles.filter((f: any) => {
-                  if (normalize(getDocDomain(f)) !== normalize(path[0])) return false;
-                  if (path[1] === "No Subdomain") {
-                    const sub = normalize(getDocSubdomain(f));
-                    if (sub && sub !== "no subdomain" && sub !== "none") return false;
-                  } else {
-                    if (normalize(getDocSubdomain(f)) !== normalize(path[1])) return false;
-                  }
-                  if (normalize(getDocDept(f)) !== normalize(path[2])) return false;
-                  if (path[3]) {
-                    const sec = normalize(getDocSection(f));
-                    if (path[3] === "Overall Section") {
-                      if (sec && sec !== "overall section" && sec !== "overall" && sec !== "none") return false;
-                    } else {
-                      if (sec !== normalize(path[3])) return false;
-                    }
-                  }
-                  return true;
-                });
+            // Special hierarchy for Admissions: Admissions -> Academic Year -> Branch -> Files in that path
+            const isAdmissions = normalize(selectedDomain) === "admissions";
+            const isPlacements = normalize(selectedDomain) === "placements";
+            if (isAdmissions) {
+              // 1. ACADEMIC YEAR
+              if (!selectedYearCrumb) {
+                const dbYears = (academicYears || []).map((y: any) => y.year).filter(Boolean);
+                const fileYears = (Array.from(new Set(currentFiles.map((f: any) => getDocYear(f)).filter(Boolean))) as string[]);
+                const allYears = (Array.from(new Set([...dbYears, ...fileYears])) as string[]).sort();
+                const directYearCount = currentFiles.filter((f: any) => !getDocYear(f)).length;
 
                 return (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {branchFiles.map((file: any) => (
-                      <FileCard key={file.id} file={file} />
-                    ))}
-                    {branchFiles.length === 0 && <p className="text-gray-400 col-span-full text-center py-8">No files found.</p>}
-                  </div>
-                );
-              }
-            }
-
-            const currentStep = path.length;
-
-            if (currentStep === 1) {
-              const yearsSet = new Set<string>();
-              academicYears.forEach((y: any) => { if (y.year) yearsSet.add(y.year); });
-              allFiles.forEach((f: any) => {
-                if (normalize(getDocDomain(f)) === normalize(path[0])) {
-                  const y = getDocYear(f);
-                  if (y) yearsSet.add(y);
-                }
-              });
-              const years = Array.from(yearsSet).sort();
-              return (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  {years.map((y: any) => {
-                    const count = allFiles.filter((f: any) => 
-                      normalize(getDocDomain(f)) === normalize(path[0]) && 
-                      normalize(getDocYear(f)) === normalize(y)
-                    ).length;
-                    return (
-                      <div key={y} onClick={() => setPath([...path, y])} className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors">
-                        <div className="w-12 h-12 relative mb-2"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
-                        <span className="font-semibold text-sm">{y}</span>
-                        <span className="text-xs text-gray-400 mt-1">{count} {count === 1 ? "file" : "files"}</span>
-                      </div>
-                    );
-                  })}
-                  {years.length === 0 && <p className="text-gray-400 col-span-full text-center py-8">No academic years available.</p>}
-                </div>
-              );
-            }
-
-            if (currentStep === 2) {
-              const yos = ["1st yr", "2nd yr", "3rd yr", "4th yr"];
-              return (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  {yos.map((y: any) => {
-                    const count = allFiles.filter((f: any) => 
-                      normalize(getDocDomain(f)) === normalize(path[0]) && 
-                      normalize(getDocYear(f)) === normalize(path[1]) && 
-                      normalizeYos(getDocYearOfStudy(f)) === normalizeYos(y)
-                    ).length;
-                    return (
-                      <div key={y} onClick={() => setPath([...path, y])} className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors">
-                        <div className="w-12 h-12 relative mb-2"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
-                        <span className="font-semibold text-sm">{y}</span>
-                        <span className="text-xs text-gray-400 mt-1">{count} {count === 1 ? "file" : "files"}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            }
-
-            if (currentStep === 3) {
-              const deptsSet = new Set<string>();
-              departments.forEach((d: any) => { if (d.name) deptsSet.add(d.name); });
-              allFiles.forEach((f: any) => {
-                if (
-                  normalize(getDocDomain(f)) === normalize(path[0]) &&
-                  normalize(getDocYear(f)) === normalize(path[1]) &&
-                  normalizeYos(getDocYearOfStudy(f)) === normalizeYos(path[2])
-                ) {
-                  const d = getDocDept(f);
-                  if (d) deptsSet.add(d);
-                }
-              });
-              const depts = Array.from(deptsSet).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
-              return (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  {depts.map((d: any) => {
-                    const count = allFiles.filter((f: any) => 
-                      normalize(getDocDomain(f)) === normalize(path[0]) && 
-                      normalize(getDocYear(f)) === normalize(path[1]) && 
-                      normalizeYos(getDocYearOfStudy(f)) === normalizeYos(path[2]) &&
-                      normalize(getDocDept(f)) === normalize(d)
-                    ).length;
-                    return (
-                      <div key={d} onClick={() => setPath([...path, d])} className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors">
-                        <div className="w-12 h-12 relative mb-2"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
-                        <span className="font-semibold text-sm">{d}</span>
-                        <span className="text-xs text-gray-400 mt-1">{count} {count === 1 ? "file" : "files"}</span>
-                      </div>
-                    );
-                  })}
-                  {depts.length === 0 && <p className="text-gray-400 col-span-full text-center py-8">No branches available.</p>}
-                </div>
-              );
-            }
-
-            // Path length >= 4: Branch selected [domain, academicYear, yearOfStudy, branch, ...extra]
-            const branchFiles = allFiles.filter((f: any) =>
-              normalize(getDocDomain(f)) === normalize(path[0]) &&
-              normalize(getDocYear(f)) === normalize(path[1]) &&
-              normalizeYos(getDocYearOfStudy(f)) === normalizeYos(path[2]) &&
-              normalize(getDocDept(f)) === normalize(path[3])
-            );
-
-            // Determine specific sections configured or existing in files
-            const branchObj = departments.find((d: any) => normalize(d.name) === normalize(path[3]));
-            const configuredSections = (branchObj?.sections || []).map((s: any) => s.name);
-            const sectionsSet = new Set<string>();
-            configuredSections.forEach((s: string) => {
-              const clean = cleanSectionName(s);
-              if (clean) sectionsSet.add(clean);
-            });
-            branchFiles.forEach((f: any) => {
-              const s = getDocSection(f);
-              const clean = cleanSectionName(s);
-              if (clean) sectionsSet.add(clean);
-            });
-            const specificSections = Array.from(sectionsSet).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
-            const branchHasSections = specificSections.length > 0;
-
-            // Subdomains for domain
-            const domainObj = domains.find((d: any) => normalize(d.name) === normalize(path[0]));
-            const domainSubdomains = (domainObj?.subdomains || []).map((s: any) => s.name).sort((a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
-            const hasSubdomains = domainSubdomains.length > 0;
-
-            // Parse selections from crumbs beyond branch
-            let selectedSection: string | null = null;
-            let selectedSemester: string | null = null;
-            let selectedSubdomain: string | null = null;
-
-            for (const crumb of path.slice(4)) {
-              if (crumb === "Overall Section") {
-                selectedSection = "Overall Section";
-              } else if (crumb.startsWith("Section ")) {
-                selectedSection = crumb.replace(/^Section\s+/i, "").trim();
-              } else if (specificSections.some(s => cleanSectionName(s).toLowerCase() === cleanSectionName(crumb).toLowerCase())) {
-                selectedSection = cleanSectionName(crumb);
-              } else if (crumb === "Semester 1" || crumb === "1") {
-                selectedSemester = "1";
-              } else if (crumb === "Semester 2" || crumb === "2") {
-                selectedSemester = "2";
-              } else if (crumb === "No Semester") {
-                selectedSemester = "NONE";
-              } else if (domainSubdomains.some(s => normalize(s) === normalize(crumb))) {
-                selectedSubdomain = crumb;
-              } else if (crumb === "Direct Files" || crumb === "No Subdomain") {
-                selectedSubdomain = "NONE";
-              }
-            }
-
-            // Step A: If branch has specific sections and none selected yet, show Sections
-            if (branchHasSections && selectedSection === null) {
-              const overallCount = branchFiles.filter((f: any) => !normalizeSec(getDocSection(f))).length;
-              return (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div
-                    onClick={() => setPath([...path, "Overall Section"])}
-                    className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors"
-                  >
-                    <div className="w-12 h-12 relative mb-2"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
-                    <span className="font-semibold text-sm">Overall Section</span>
-                    <span className="text-xs text-gray-400 mt-1">{overallCount} {overallCount === 1 ? "file" : "files"}</span>
-                  </div>
-                  {specificSections.map((sec: string) => {
-                    const count = branchFiles.filter((f: any) => cleanSectionName(getDocSection(f)).toLowerCase() === sec.toLowerCase()).length;
-                    return (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {directYearCount > 0 && (
                       <div
-                        key={sec}
-                        onClick={() => setPath([...path, `Section ${sec}`])}
+                        onClick={() => setPath([...path, { type: "academicYear", value: "__DIRECT__", label: "Direct Files" }])}
                         className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors"
                       >
-                        <div className="w-12 h-12 relative mb-2"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
-                        <span className="font-semibold text-sm">Section {sec}</span>
-                        <span className="text-xs text-gray-400 mt-1">{count} {count === 1 ? "file" : "files"}</span>
+                        <div className="w-12 h-12 relative mb-2 shrink-0"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
+                        <span className="font-semibold text-sm">Direct Files</span>
+                        <span className="text-xs text-gray-400 mt-1">{directYearCount} {directYearCount === 1 ? 'file' : 'files'}</span>
                       </div>
-                    );
-                  })}
-                </div>
-              );
-            }
-
-            // Files scoped to the current section
-            const sectionFiles = branchFiles.filter((f: any) => {
-              if (selectedSection) {
-                if (selectedSection === "Overall Section") {
-                  return !normalizeSec(getDocSection(f));
-                }
-                return cleanSectionName(getDocSection(f)).toLowerCase() === selectedSection.toLowerCase();
-              }
-              return true;
-            });
-
-            // Step B: Check if files in this section/branch actually have Semesters
-            const sem1Count = sectionFiles.filter(f => normalizeSem(getDocSem(f)) === "1").length;
-            const sem2Count = sectionFiles.filter(f => normalizeSem(getDocSem(f)) === "2").length;
-            const noSemCount = sectionFiles.filter(f => !normalizeSem(getDocSem(f))).length;
-            const hasSemesters = sem1Count > 0 || sem2Count > 0;
-
-            if (hasSemesters && selectedSemester === null) {
-              return (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  {sem1Count > 0 && (
-                    <div
-                      onClick={() => setPath([...path, "Semester 1"])}
-                      className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors"
-                    >
-                      <div className="w-12 h-12 relative mb-2"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
-                      <span className="font-semibold text-sm">Semester 1</span>
-                      <span className="text-xs text-gray-400 mt-1">{sem1Count} {sem1Count === 1 ? "file" : "files"}</span>
-                    </div>
-                  )}
-                  {sem2Count > 0 && (
-                    <div
-                      onClick={() => setPath([...path, "Semester 2"])}
-                      className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors"
-                    >
-                      <div className="w-12 h-12 relative mb-2"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
-                      <span className="font-semibold text-sm">Semester 2</span>
-                      <span className="text-xs text-gray-400 mt-1">{sem2Count} {sem2Count === 1 ? "file" : "files"}</span>
-                    </div>
-                  )}
-                  {noSemCount > 0 && (
-                    <div
-                      onClick={() => setPath([...path, "No Semester"])}
-                      className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors"
-                    >
-                      <div className="w-12 h-12 relative mb-2"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
-                      <span className="font-semibold text-sm">Direct Files</span>
-                      <span className="text-xs text-gray-400 mt-1">{noSemCount} {noSemCount === 1 ? "file" : "files"}</span>
-                    </div>
-                  )}
-                </div>
-              );
-            }
-
-            // Files scoped to the semester
-            const semFiles = sectionFiles.filter((f: any) => {
-              if (selectedSemester) {
-                if (selectedSemester === "NONE") {
-                  return !normalizeSem(getDocSem(f));
-                }
-                return normalizeSem(getDocSem(f)) === selectedSemester;
-              }
-              return true;
-            });
-
-            // Step C: Subdomains step (only if domain actually has subdomains configured)
-            if (hasSubdomains && selectedSubdomain === null) {
-              const directCount = semFiles.filter((f: any) => {
-                const sub = normalize(getDocSubdomain(f));
-                return !sub || sub === "no subdomain" || sub === "none";
-              }).length;
-
-              return (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div onClick={() => setPath([...path, "Direct Files"])} className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors">
-                    <div className="w-12 h-12 relative mb-2"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
-                    <span className="font-semibold text-sm">Direct Files</span>
-                    <span className="text-xs text-gray-400 mt-1">{directCount} {directCount === 1 ? "file" : "files"}</span>
+                    )}
+                    {allYears.map((year: string) => {
+                      const count = currentFiles.filter((f: any) => normalize(getDocYear(f)) === normalize(year)).length;
+                      return (
+                        <div
+                          key={year}
+                          onClick={() => setPath([...path, { type: "academicYear", value: year, label: year }])}
+                          className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors"
+                        >
+                          <div className="w-12 h-12 relative mb-2 shrink-0"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
+                          <span className="font-semibold text-sm">{year}</span>
+                          <span className="text-xs text-gray-400 mt-1">{count} {count === 1 ? 'file' : 'files'}</span>
+                        </div>
+                      );
+                    })}
                   </div>
-                  {domainSubdomains.map((s: string) => {
-                    const subCount = semFiles.filter((f: any) => normalize(getDocSubdomain(f)) === normalize(s)).length;
+                );
+              }
+
+              // 2. BRANCH
+              if (!selectedBranchCrumb) {
+                const dbBranches = (departments || []).map((d: any) => d.name).filter(Boolean);
+                const fileBranches = (Array.from(new Set(currentFiles.map((f: any) => getDocBranch(f)).filter(Boolean))) as string[]);
+                const allBranches = (Array.from(new Set([...dbBranches, ...fileBranches])) as string[]).sort((a: string, b: string) => a.localeCompare(b));
+                const directBranchCount = currentFiles.filter((f: any) => !getDocBranch(f)).length;
+
+                return (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {directBranchCount > 0 && (
+                      <div
+                        onClick={() => setPath([...path, { type: "branch", value: "__DIRECT__", label: "Direct Files" }])}
+                        className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors"
+                      >
+                        <div className="w-12 h-12 relative mb-2 shrink-0"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
+                        <span className="font-semibold text-sm">Direct Files</span>
+                        <span className="text-xs text-gray-400 mt-1">{directBranchCount} {directBranchCount === 1 ? 'file' : 'files'}</span>
+                      </div>
+                    )}
+                    {allBranches.map((branch: string) => {
+                      const count = currentFiles.filter((f: any) => normalize(getDocBranch(f)) === normalize(branch)).length;
+                      return (
+                        <div
+                          key={branch}
+                          onClick={() => setPath([...path, { type: "branch", value: branch, label: branch }])}
+                          className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors"
+                        >
+                          <div className="w-12 h-12 relative mb-2 shrink-0"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
+                          <span className="font-semibold text-sm">{branch}</span>
+                          <span className="text-xs text-gray-400 mt-1">{count} {count === 1 ? 'file' : 'files'}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              }
+
+              // 3. FILES IN THAT PATH
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {currentFiles.map((file: any) => (
+                    <FileCard key={file.id} file={file} />
+                  ))}
+                  {currentFiles.length === 0 && (
+                    <div className="col-span-full py-12 flex flex-col items-center justify-center text-center">
+                      <div className="w-16 h-16 rounded-full bg-gray-50 flex items-center justify-center mb-3 text-gray-300">
+                        <div className="w-8 h-8 relative"><Image src="/logo.png" alt="Folder" fill sizes="32px" className="object-contain opacity-40" /></div>
+                      </div>
+                      <p className="text-sm font-semibold text-gray-600">No files found.</p>
+                      <p className="text-xs text-gray-400 mt-1">There are no approved documents in this folder.</p>
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            // Path hierarchy order:
+            // 1. Subdomain -> 2. Academic Year -> 3. Year of Studying -> 4. Branch -> 5. Section -> 6. Semester -> 7. Files
+            // If any of this is not specified, ignore it automatically.
+
+            // 1. SUBDOMAIN (if there)
+            if (!selectedSubdomainCrumb) {
+              const configuredSubs = (selectedDomainObj?.subdomains || []).map((s: any) => s.name).filter(Boolean);
+              const fileSubs = (Array.from(new Set(currentFiles.map((f: any) => getDocSubdomain(f)).filter(Boolean))) as string[]);
+              const allSubs = (Array.from(new Set([...configuredSubs, ...fileSubs])) as string[]).sort((a: string, b: string) => a.localeCompare(b));
+
+              if (allSubs.length > 0) {
+                const directCount = currentFiles.filter((f: any) => !getDocSubdomain(f)).length;
+                return (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {directCount > 0 && (
+                      <div
+                        onClick={() => setPath([...path, { type: "subdomain", value: "__DIRECT__", label: "Direct Files" }])}
+                        className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors"
+                      >
+                        <div className="w-12 h-12 relative mb-2 shrink-0"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
+                        <span className="font-semibold text-sm">Direct Files</span>
+                        <span className="text-xs text-gray-400 mt-1">{directCount} {directCount === 1 ? 'file' : 'files'}</span>
+                      </div>
+                    )}
+                    {allSubs.map((sub: string) => {
+                      const count = currentFiles.filter((f: any) => normalize(getDocSubdomain(f)) === normalize(sub)).length;
+                      return (
+                        <div
+                          key={sub}
+                          onClick={() => setPath([...path, { type: "subdomain", value: sub, label: sub }])}
+                          className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors"
+                        >
+                          <div className="w-12 h-12 relative mb-2 shrink-0"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
+                          <span className="font-semibold text-sm">{sub}</span>
+                          <span className="text-xs text-gray-400 mt-1">{count} {count === 1 ? 'file' : 'files'}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              }
+            }
+
+            // 2. ACADEMIC YEAR (all academic years from database even no files in that year)
+            if (!selectedYearCrumb) {
+              const dbYears = (academicYears || []).map((y: any) => y.year).filter(Boolean);
+              const fileYears = (Array.from(new Set(currentFiles.map((f: any) => getDocYear(f)).filter(Boolean))) as string[]);
+              const allYears = (Array.from(new Set([...dbYears, ...fileYears])) as string[]).sort();
+
+              if (allYears.length > 0) {
+                return (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {allYears.map((year: string) => {
+                      const count = currentFiles.filter((f: any) => normalize(getDocYear(f)) === normalize(year)).length;
+                      return (
+                        <div
+                          key={year}
+                          onClick={() => setPath([...path, { type: "academicYear", value: year, label: year }])}
+                          className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors"
+                        >
+                          <div className="w-12 h-12 relative mb-2 shrink-0"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
+                          <span className="font-semibold text-sm">{year}</span>
+                          <span className="text-xs text-gray-400 mt-1">{count} {count === 1 ? 'file' : 'files'}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              }
+            }
+
+            // 3. YEAR OF STUDYING (1st year, 2nd year, 3rd year, 4th year even no files are there in that path)
+            if (!selectedYosCrumb) {
+              const standardYos = [
+                { key: "1st", label: "1st yr" },
+                { key: "2nd", label: "2nd yr" },
+                { key: "3rd", label: "3rd yr" },
+                { key: "4th", label: "4th yr" }
+              ];
+
+              return (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {standardYos.map((yosItem) => {
+                    const count = currentFiles.filter((f: any) => normalizeYos(getDocYearOfStudy(f)) === yosItem.key).length;
                     return (
-                      <div key={s} onClick={() => setPath([...path, s])} className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors">
-                        <div className="w-12 h-12 relative mb-2"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
-                        <span className="font-semibold text-sm">{s}</span>
-                        <span className="text-xs text-gray-400 mt-1">{subCount} {subCount === 1 ? "file" : "files"}</span>
+                      <div
+                        key={yosItem.key}
+                        onClick={() => setPath([...path, { type: "yearOfStudy", value: yosItem.key, label: yosItem.label }])}
+                        className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors"
+                      >
+                        <div className="w-12 h-12 relative mb-2 shrink-0"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
+                        <span className="font-semibold text-sm">{yosItem.label}</span>
+                        <span className="text-xs text-gray-400 mt-1">{count} {count === 1 ? 'file' : 'files'}</span>
                       </div>
                     );
                   })}
@@ -688,24 +428,193 @@ export default function FacultyOverview() {
               );
             }
 
-            // Step D: Show files!
-            const finalFiles = semFiles.filter((f: any) => {
-              if (selectedSubdomain) {
-                const sub = normalize(getDocSubdomain(f));
-                if (selectedSubdomain === "NONE") {
-                  return !sub || sub === "no subdomain" || sub === "none";
-                }
-                return sub === normalize(selectedSubdomain);
-              }
-              return true;
-            });
+            // 4. BRANCH (from database even no files are there)
+            if (!selectedBranchCrumb) {
+              const dbBranches = (departments || []).map((d: any) => d.name).filter(Boolean);
+              const fileBranches = (Array.from(new Set(currentFiles.map((f: any) => getDocBranch(f)).filter(Boolean))) as string[]);
+              const allBranches = (Array.from(new Set([...dbBranches, ...fileBranches])) as string[]).sort((a: string, b: string) => a.localeCompare(b));
 
+              if (allBranches.length > 0) {
+                return (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {allBranches.map((branch: string) => {
+                      const count = currentFiles.filter((f: any) => normalize(getDocBranch(f)) === normalize(branch)).length;
+                      return (
+                        <div
+                          key={branch}
+                          onClick={() => setPath([...path, { type: "branch", value: branch, label: branch }])}
+                          className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors"
+                        >
+                          <div className="w-12 h-12 relative mb-2 shrink-0"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
+                          <span className="font-semibold text-sm">{branch}</span>
+                          <span className="text-xs text-gray-400 mt-1">{count} {count === 1 ? 'file' : 'files'}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              }
+            }
+
+            // 5. SECTION
+            if (!selectedSectionCrumb) {
+              const branchObj = departments.find((d: any) => normalize(d.name) === normalize(selectedBranchCrumb?.value));
+              const configuredSections = (branchObj?.sections || []).map((s: any) => cleanSectionName(s.name)).filter(Boolean);
+              const fileSections = (Array.from(new Set(currentFiles.map((f: any) => cleanSectionName(getDocSection(f))).filter(Boolean))) as string[]);
+              const allSections = (Array.from(new Set([...configuredSections, ...fileSections])) as string[]).sort((a: string, b: string) => a.localeCompare(b));
+
+              if (allSections.length > 0) {
+                const overallCount = currentFiles.filter((f: any) => !cleanSectionName(getDocSection(f))).length;
+                return (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div
+                      onClick={() => setPath([...path, { type: "section", value: "__OVERALL__", label: "Overall Section" }])}
+                      className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors"
+                    >
+                      <div className="w-12 h-12 relative mb-2 shrink-0"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
+                      <span className="font-semibold text-sm">Overall Section</span>
+                      <span className="text-xs text-gray-400 mt-1">{overallCount} {overallCount === 1 ? 'file' : 'files'}</span>
+                    </div>
+                    {allSections.map((sec: string) => {
+                      const count = currentFiles.filter((f: any) => cleanSectionName(getDocSection(f)).toLowerCase() === sec.toLowerCase()).length;
+                      return (
+                        <div
+                          key={sec}
+                          onClick={() => setPath([...path, { type: "section", value: sec, label: `Section ${sec}` }])}
+                          className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors"
+                        >
+                          <div className="w-12 h-12 relative mb-2 shrink-0"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
+                          <span className="font-semibold text-sm">Section {sec}</span>
+                          <span className="text-xs text-gray-400 mt-1">{count} {count === 1 ? 'file' : 'files'}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              }
+            }
+
+            // Special hierarchy for Placements: Placements -> Subdomain -> Academic Year -> Year of Study -> Branch -> Section -> Student Register Number -> Files
+            if (isPlacements) {
+              // 6. STUDENT REGISTER NUMBER
+              if (!selectedStudentCrumb) {
+                const studentRegs = (Array.from(new Set(
+                  currentFiles
+                    .map((f: any) => getDocStudentRegisterNumber(f))
+                    .filter(Boolean)
+                )) as string[]).sort((a: string, b: string) => a.localeCompare(b));
+
+                const directStudentCount = currentFiles.filter((f: any) => !getDocStudentRegisterNumber(f)).length;
+
+                return (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {directStudentCount > 0 && (
+                      <div
+                        onClick={() => setPath([...path, { type: "student", value: "__DIRECT__", label: "Other Documents" }])}
+                        className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors"
+                      >
+                        <div className="w-12 h-12 relative mb-2 shrink-0"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
+                        <span className="font-semibold text-sm">Other Documents</span>
+                        <span className="text-xs text-gray-400 mt-1">{directStudentCount} {directStudentCount === 1 ? 'file' : 'files'}</span>
+                      </div>
+                    )}
+                    {studentRegs.map((reg: string) => {
+                      const count = currentFiles.filter((f: any) => getDocStudentRegisterNumber(f) === reg).length;
+                      return (
+                        <div
+                          key={reg}
+                          onClick={() => setPath([...path, { type: "student", value: reg, label: reg }])}
+                          className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors group"
+                        >
+                          <div className="w-12 h-12 relative mb-2 shrink-0"><Image src="/logo.png" alt="Student" fill sizes="48px" className="object-contain" /></div>
+                          <span className="font-semibold text-sm font-mono tracking-wider">{reg}</span>
+                          <span className="text-xs text-gray-400 mt-1">{count} {count === 1 ? 'file' : 'files'}</span>
+                        </div>
+                      );
+                    })}
+                    {studentRegs.length === 0 && directStudentCount === 0 && (
+                      <div className="col-span-full py-12 flex flex-col items-center justify-center text-center">
+                        <div className="w-16 h-16 rounded-full bg-gray-50 flex items-center justify-center mb-3 text-gray-300">
+                          <div className="w-8 h-8 relative"><Image src="/logo.png" alt="Student" fill sizes="32px" className="object-contain opacity-40" /></div>
+                        </div>
+                        <p className="text-sm font-semibold text-gray-600">No student documents found.</p>
+                        <p className="text-xs text-gray-400 mt-1">There are no student documents uploaded in this path yet.</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
+              // 7. FILES FOR THIS STUDENT
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {currentFiles.map((file: any) => (
+                    <FileCard key={file.id} file={file} />
+                  ))}
+                  {currentFiles.length === 0 && (
+                    <div className="col-span-full py-12 flex flex-col items-center justify-center text-center">
+                      <div className="w-16 h-16 rounded-full bg-gray-50 flex items-center justify-center mb-3 text-gray-300">
+                        <div className="w-8 h-8 relative"><Image src="/logo.png" alt="Folder" fill sizes="32px" className="object-contain opacity-40" /></div>
+                      </div>
+                      <p className="text-sm font-semibold text-gray-600">No files found.</p>
+                      <p className="text-xs text-gray-400 mt-1">There are no approved documents for this student.</p>
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            // 6. SEMESTER (EVEN OR ODD)
+            if (!selectedSemesterCrumb) {
+              const sem1Count = currentFiles.filter((f: any) => normalizeSem(getDocSem(f)) === "1").length;
+              const sem2Count = currentFiles.filter((f: any) => normalizeSem(getDocSem(f)) === "2").length;
+              const noSemCount = currentFiles.filter((f: any) => !normalizeSem(getDocSem(f))).length;
+
+              if (sem1Count > 0 || sem2Count > 0) {
+                return (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {sem1Count > 0 && (
+                      <div
+                        onClick={() => setPath([...path, { type: "semester", value: "1", label: "Semester 1 (Odd)" }])}
+                        className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors"
+                      >
+                        <div className="w-12 h-12 relative mb-2 shrink-0"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
+                        <span className="font-semibold text-sm">Semester 1 (Odd)</span>
+                        <span className="text-xs text-gray-400 mt-1">{sem1Count} {sem1Count === 1 ? 'file' : 'files'}</span>
+                      </div>
+                    )}
+                    {sem2Count > 0 && (
+                      <div
+                        onClick={() => setPath([...path, { type: "semester", value: "2", label: "Semester 2 (Even)" }])}
+                        className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors"
+                      >
+                        <div className="w-12 h-12 relative mb-2 shrink-0"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
+                        <span className="font-semibold text-sm">Semester 2 (Even)</span>
+                        <span className="text-xs text-gray-400 mt-1">{sem2Count} {sem2Count === 1 ? 'file' : 'files'}</span>
+                      </div>
+                    )}
+                    {noSemCount > 0 && (
+                      <div
+                        onClick={() => setPath([...path, { type: "semester", value: "__NONE__", label: "Direct Files" }])}
+                        className="p-4 border rounded-xl hover:bg-gray-50 cursor-pointer flex flex-col items-center justify-center text-center transition-colors"
+                      >
+                        <div className="w-12 h-12 relative mb-2 shrink-0"><Image src="/logo.png" alt="Folder" fill sizes="48px" className="object-contain" /></div>
+                        <span className="font-semibold text-sm">Direct Files</span>
+                        <span className="text-xs text-gray-400 mt-1">{noSemCount} {noSemCount === 1 ? 'file' : 'files'}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+            }
+
+            // 7. FILES
             return (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {finalFiles.map((file: any) => (
+                {currentFiles.map((file: any) => (
                   <FileCard key={file.id} file={file} />
                 ))}
-                {finalFiles.length === 0 && <p className="text-gray-400 col-span-full text-center py-8">No files found.</p>}
+                {currentFiles.length === 0 && <p className="text-gray-400 col-span-full text-center py-8">No files found.</p>}
               </div>
             );
           })()}

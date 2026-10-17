@@ -139,3 +139,35 @@ export const deleteFileFromDrive = async (fileId: string) => {
   }
 };
 
+/**
+ * Copies an existing file in Google Drive.
+ * @param fileId The Google Drive file ID.
+ * @param newFileName The new filename for the copy.
+ */
+export const copyFileInDrive = async (fileId: string, newFileName: string) => {
+  try {
+    const fileMetadata: any = {
+      name: newFileName,
+    };
+    if (env.GOOGLE_DRIVE_FOLDER_ID) {
+      fileMetadata.parents = [env.GOOGLE_DRIVE_FOLDER_ID];
+    }
+
+    const response = await drive.files.copy({
+      fileId,
+      requestBody: fileMetadata,
+      fields: "id, mimeType, webViewLink",
+    });
+
+    return {
+      fileId: response.data.id,
+      mimeType: response.data.mimeType,
+      webViewLink: response.data.webViewLink,
+    };
+  } catch (error) {
+    console.error("Google Drive copy error:", error);
+    return null;
+  }
+};
+
+

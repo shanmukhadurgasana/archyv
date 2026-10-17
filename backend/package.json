@@ -24,11 +24,13 @@
     "googleapis": "^183.0.0",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.3",
+    "mammoth": "^1.13.0",
     "multer": "^2.3.0",
     "node-cron": "^4.6.0",
     "nodemailer": "^10.0.0",
     "otpauth": "^9.5.2",
     "otplib": "^13.5.0",
+    "pdf-parse": "^2.4.5",
     "pg": "^8.23.0",
     "qrcode": "^1.5.4",
     "streamifier": "^0.1.1"

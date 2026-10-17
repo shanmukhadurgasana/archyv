@@ -39,7 +39,10 @@ export default function AccessModal({ isOpen, document, onClose }: AccessModalPr
     }
   }, [isOpen, document]);
 
-  if (!isOpen || !mounted || currentUser?.role?.toLowerCase() !== 'admin') return null;
+  const isUserAdmin = currentUser?.role?.toLowerCase() === 'admin' || 
+                      currentUser?.role?.toLowerCase() === 'superadmin' || 
+                      currentUser?.role?.toLowerCase() === 'super_admin';
+  if (!isOpen || !mounted || !isUserAdmin) return null;
 
   const handleSave = async () => {
     if (isSubmitting) return;

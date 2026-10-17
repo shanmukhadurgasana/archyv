@@ -56,10 +56,10 @@ export const requireRole = (...roles: Role[]) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    if (!roles.includes(req.user.role)) {
-      return res.status(403).json({ message: "Forbidden: Insufficient permissions" });
+    if (req.user.role === Role.SUPER_ADMIN || roles.includes(req.user.role)) {
+      return next();
     }
 
-    next();
+    return res.status(403).json({ message: "Forbidden: Insufficient permissions" });
   };
 };

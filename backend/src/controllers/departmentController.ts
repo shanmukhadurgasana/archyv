@@ -111,12 +111,38 @@ export const deleteDepartment = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ success: false, message: "Department not found" });
     }
 
-    const docsCount = await prisma.document.count({ where: { departmentId: id } });
-    const usersCount = await prisma.user.count({ where: { departmentId: id } });
-    if (docsCount > 0 || usersCount > 0) {
-      return res.status(400).json({ success: false, message: "Cannot delete department with associated documents or users" });
+    // Unlink users from this department
+    await prisma.user.updateMany({
+      where: { departmentId: id },
+      data: { departmentId: null }
+    });
+
+    // Find and unlink all sections in this department
+    const sections = await prisma.section.findMany({
+      where: { departmentId: id },
+      select: { id: true }
+    });
+    const sectionIds = sections.map(s => s.id);
+
+    if (sectionIds.length > 0) {
+      await prisma.document.updateMany({
+        where: { sectionId: { in: sectionIds } },
+        data: { sectionId: null }
+      });
     }
 
+    // Unlink documents from this department
+    await prisma.document.updateMany({
+      where: { departmentId: id },
+      data: { departmentId: null }
+    });
+
+    // Delete sections belonging to this department
+    await prisma.section.deleteMany({
+      where: { departmentId: id }
+    });
+
+    // Delete the department
     await prisma.department.delete({ where: { id } });
 
     if (req.user) {
@@ -241,6 +267,12 @@ export const deleteSection = async (req: AuthRequest, res: Response) => {
     if (!section) {
       return res.status(404).json({ success: false, message: "Section not found" });
     }
+
+    // Unlink any documents referencing this section
+    await prisma.document.updateMany({
+      where: { sectionId: targetId },
+      data: { sectionId: null }
+    });
 
     await prisma.section.delete({ where: { id: targetId } });
 

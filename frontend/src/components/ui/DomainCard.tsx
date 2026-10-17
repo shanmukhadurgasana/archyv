@@ -9,15 +9,15 @@ interface DomainCardProps {
 export default function DomainCard({ name, count, isFaculty }: DomainCardProps) {
   const showFacultyBadge = Boolean(isFaculty);
   return (
-    <div className="bg-white border border-[var(--border)] rounded-2xl p-5 flex items-center gap-4 hover:shadow-sm transition-all cursor-pointer group">
-      <div className="w-12 h-12 rounded-xl border border-[var(--border)] flex items-center justify-center bg-gray-50 group-hover:bg-[var(--archyv-accent)]/10 transition-colors p-2.5 relative">
+    <div className="bg-white border border-[var(--border)] rounded-2xl p-4 sm:p-5 flex items-center gap-3 sm:gap-4 hover:shadow-sm transition-all cursor-pointer group h-full">
+      <div className="w-12 h-12 shrink-0 rounded-xl border border-[var(--border)] flex items-center justify-center bg-gray-50 group-hover:bg-[var(--archyv-accent)]/10 transition-colors p-2.5 relative">
         <Image src="/logo.png" alt="Domain" fill sizes="48px" className="object-contain p-2 opacity-80 group-hover:opacity-100 transition-opacity" />
       </div>
-      <div>
-        <div className="text-sm font-semibold text-foreground mb-0.5 flex items-center gap-1.5">
-          <span className="truncate">{name}</span>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-semibold text-foreground mb-0.5 leading-snug flex items-center flex-wrap gap-x-1.5 gap-y-0.5">
+          <span className="break-words">{name}</span>
           {showFacultyBadge && (
-            <span className="inline-flex items-center text-xs text-indigo-600 bg-indigo-50 border border-indigo-200/60 px-1.5 py-0.5 rounded-full" title="Faculty Domain">
+            <span className="inline-flex items-center text-xs text-indigo-600 bg-indigo-50 border border-indigo-200/60 px-1.5 py-0.5 rounded-full shrink-0" title="Faculty Domain">
               👥
             </span>
           )}

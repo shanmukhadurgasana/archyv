@@ -24,7 +24,8 @@ import {
   handleOfficeGet,
   handleOfficePut,
   updateDocumentContent,
-  getDocumentContent
+  getDocumentContent,
+  duplicateDocument
 } from "../controllers/documentController";
 
 const router = Router();
@@ -75,6 +76,9 @@ router.delete("/:id/star", toggleStar as any);
 
 // GET /api/documents/:id/view - View/Download a document
 router.get("/:id/view", viewDocument as any);
+
+// POST /api/documents/:id/duplicate - Duplicate a document
+router.post("/:id/duplicate", duplicateDocument as any);
 
 // POST /api/documents/:id/approve - Approve a pending document
 router.post("/:id/approve", requireRole(Role.ADMIN) as any, approveDocument as any);

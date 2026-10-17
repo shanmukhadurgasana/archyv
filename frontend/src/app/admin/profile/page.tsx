@@ -8,7 +8,7 @@ import { useAppContext } from "@/store/AppContext";
 export default function AdminProfile() {
   const { currentUser, updateUserProfile } = useAppContext();
   const [isEditing, setIsEditing] = useState(false);
-  const [editData, setEditData] = useState({ name: "", email: "", phone: "", facultyId: "", role: "admin" as "admin" | "faculty" });
+  const [editData, setEditData] = useState<{ name: string; email: string; phone: string; facultyId: string; role: any }>({ name: "", email: "", phone: "", facultyId: "", role: "admin" });
   
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");

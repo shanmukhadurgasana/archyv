@@ -204,13 +204,6 @@ export default function AdminLogin() {
           </form>
         )}
 
-        <div className="mt-5 text-center text-sm text-gray-500">
-          Don&apos;t have an account?{" "}
-          <Link href="/auth/admin/signup" className="text-[var(--archyv-accent-hover)] font-medium hover:underline">
-            Sign up now
-          </Link>
-        </div>
-
       </div>
     </AuthLayout>
   );

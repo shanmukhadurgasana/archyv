@@ -69,12 +69,12 @@ function OptionCard({
   const confirmDelete = async () => {
     if (!deleteConfirmation) return;
     const { id } = deleteConfirmation;
-    setDeleteConfirmation(null);
     setIsDeletingId(id);
     const res = await onDelete(id);
     if (!res.success) {
       alert(res.error || `Failed to delete ${title}`);
     }
+    setDeleteConfirmation(null);
     setIsDeletingId(null);
   };
 
@@ -255,7 +255,6 @@ function DomainOptionCard({
   const confirmDelete = async () => {
     if (!deleteConfirmation) return;
     const { id, isSubdomain, domainId } = deleteConfirmation;
-    setDeleteConfirmation(null);
     setIsDeletingId(id);
     const res = isSubdomain
       ? await onDeleteSubdomain(domainId!, id)
@@ -264,6 +263,7 @@ function DomainOptionCard({
     if (!res.success) {
       alert(res.error || `Failed to delete ${isSubdomain ? 'Subdomain' : 'Domain'}`);
     }
+    setDeleteConfirmation(null);
     setIsDeletingId(null);
   };
 
@@ -442,6 +442,15 @@ function DomainOptionCard({
           {addError && <p className="text-red-500 text-xs mt-1">{addError}</p>}
         </form>
       )}
+
+      <ConfirmationModal
+        isOpen={!!deleteConfirmation}
+        title={`Delete ${deleteConfirmation?.isSubdomain ? 'Subdomain' : 'Domain'}`}
+        message={`Are you sure you want to delete "${deleteConfirmation?.name}"? This action cannot be undone.`}
+        confirmText="Delete"
+        onCancel={() => setDeleteConfirmation(null)}
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }
@@ -525,7 +534,6 @@ function BranchOptionCard({
   const confirmDelete = async () => {
     if (!deleteConfirmation) return;
     const { id, isSection, branchId } = deleteConfirmation;
-    setDeleteConfirmation(null);
     setIsDeletingId(id);
     const res = isSection
       ? await onDeleteSection(branchId!, id)
@@ -534,6 +542,7 @@ function BranchOptionCard({
     if (!res.success) {
       alert(res.error || `Failed to delete ${isSection ? 'Section' : 'Branch'}`);
     }
+    setDeleteConfirmation(null);
     setIsDeletingId(null);
   };
 
@@ -715,22 +724,26 @@ function BranchOptionCard({
 }
 
 export default function ManageOptions() {
-  const { domains, academicYears, departments, fetchDomains, fetchAcademicYears, fetchDepartments, currentUser } = useAppContext();
-  const isAdmin = currentUser?.role?.toLowerCase() === 'admin';
-  const isAuthorized = isAdmin || currentUser?.role?.toLowerCase() === 'faculty';
+  const { domains, academicYears, departments, fetchDomains, fetchAcademicYears, fetchDepartments, fetchDocuments, fetchDashboardStats, currentUser } = useAppContext();
+  const role = currentUser?.role?.toLowerCase();
+  const isAuthorized = role === 'admin' || role === 'faculty' || role === 'super_admin' || role === 'superadmin';
   
   const apiCall = async (url: string, method: string, body?: any) => {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}${url}`, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: body ? JSON.stringify(body) : undefined
-    });
-    if (!res.ok) {
-      const data = await res.json();
-      return { success: false, error: data.message };
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}${url}`, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: body ? JSON.stringify(body) : undefined
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        return { success: false, error: data.message || `Request failed with status ${res.status}` };
+      }
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.message || "Network error occurred" };
     }
-    return { success: true };
   };
 
   const domainOps = {
@@ -741,12 +754,19 @@ export default function ManageOptions() {
     },
     update: async (id: string, name: string, isFaculty?: boolean) => {
       const res = await apiCall(`/domains/${id}`, "PATCH", { name, isFaculty });
-      if (res.success) await fetchDomains();
+      if (res.success) {
+        await fetchDomains();
+        await fetchDocuments();
+      }
       return res;
     },
     delete: async (id: string) => {
       const res = await apiCall(`/domains/${id}`, "DELETE");
-      if (res.success) await fetchDomains();
+      if (res.success) {
+        await fetchDomains();
+        await fetchDocuments();
+        await fetchDashboardStats();
+      }
       return res;
     }
   };
@@ -759,12 +779,18 @@ export default function ManageOptions() {
     },
     update: async (id: string, name: string) => {
       const res = await apiCall(`/academic-years/${id}`, "PATCH", { year: name });
-      if (res.success) await fetchAcademicYears();
+      if (res.success) {
+        await fetchAcademicYears();
+        await fetchDocuments();
+      }
       return res;
     },
     delete: async (id: string) => {
       const res = await apiCall(`/academic-years/${id}`, "DELETE");
-      if (res.success) await fetchAcademicYears();
+      if (res.success) {
+        await fetchAcademicYears();
+        await fetchDocuments();
+      }
       return res;
     }
   };
@@ -777,12 +803,18 @@ export default function ManageOptions() {
     },
     update: async (id: string, name: string) => {
       const res = await apiCall(`/departments/${id}`, "PATCH", { name });
-      if (res.success) await fetchDepartments();
+      if (res.success) {
+        await fetchDepartments();
+        await fetchDocuments();
+      }
       return res;
     },
     delete: async (id: string) => {
       const res = await apiCall(`/departments/${id}`, "DELETE");
-      if (res.success) await fetchDepartments();
+      if (res.success) {
+        await fetchDepartments();
+        await fetchDocuments();
+      }
       return res;
     }
   };
@@ -795,12 +827,18 @@ export default function ManageOptions() {
     },
     update: async (branchId: string, id: string, name: string) => {
       const res = await apiCall(`/departments/${branchId}/sections/${id}`, "PATCH", { name });
-      if (res.success) await fetchDepartments();
+      if (res.success) {
+        await fetchDepartments();
+        await fetchDocuments();
+      }
       return res;
     },
     delete: async (branchId: string, id: string) => {
       const res = await apiCall(`/departments/${branchId}/sections/${id}`, "DELETE");
-      if (res.success) await fetchDepartments();
+      if (res.success) {
+        await fetchDepartments();
+        await fetchDocuments();
+      }
       return res;
     }
   };
@@ -813,12 +851,18 @@ export default function ManageOptions() {
     },
     update: async (domainId: string, id: string, name: string) => {
       const res = await apiCall(`/domains/${domainId}/subdomains/${id}`, "PATCH", { name });
-      if (res.success) await fetchDomains();
+      if (res.success) {
+        await fetchDomains();
+        await fetchDocuments();
+      }
       return res;
     },
     delete: async (domainId: string, id: string) => {
       const res = await apiCall(`/domains/${domainId}/subdomains/${id}`, "DELETE");
-      if (res.success) await fetchDomains();
+      if (res.success) {
+        await fetchDomains();
+        await fetchDocuments();
+      }
       return res;
     }
   };

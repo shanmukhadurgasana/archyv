@@ -10,31 +10,29 @@ export function getFileCategory(fileName?: string, fileType?: string, mimeType?:
   const fType = (fileType || '').trim().toUpperCase();
   const mime = (mimeType || '').trim().toLowerCase();
 
+  const isPicture = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp', 'ico'].includes(ext) || 
+    fType === 'IMAGE' || mime.startsWith('image/');
+
   const isCsvOrExcel = ext === 'csv' || ext === 'xlsx' || ext === 'xls' || 
     fType === 'XLSX' || fType === 'CSV' || fType === 'SPREADSHEET' ||
     mime.includes('spreadsheet') || mime.includes('excel') || mime.includes('csv');
 
   const isPdf = ext === 'pdf' || fType === 'PDF' || mime === 'application/pdf';
 
-  const isPicture = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp', 'ico'].includes(ext) || 
-    fType === 'IMAGE' || mime.startsWith('image/');
+  const isWord = ext === 'docx' || ext === 'doc' || fType === 'DOCX' || mime.includes('word') || mime.includes('document');
 
-  const isText = ['txt', 'html', 'htm', 'json', 'xml', 'log'].includes(ext) || 
+  const isText = ['txt', 'html', 'htm', 'json', 'xml', 'log', 'md'].includes(ext) || 
     fType === 'TEXT' || mime.startsWith('text/');
-
-  // Modern browsers can natively render PDFs, images, and text files directly in a new tab
-  const canOpenInNewTab = isPdf || isPicture || isText;
-  const isOfficeOrOther = !isCsvOrExcel && !canOpenInNewTab;
 
   return {
     ext,
+    isPicture,
     isCsvOrExcel,
     isPdf,
-    isPicture,
+    isWord,
     isText,
-    canOpenInNewTab,
-    isOfficeOrOther,
-    shouldOpenNewTab: canOpenInNewTab
+    canOpenInNewTab: isPicture,
+    opensInEditorModal: !isPicture
   };
 }
 

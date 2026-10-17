@@ -7,16 +7,33 @@ import { createAuditLog } from "../services/audit.service";
 
 export const getUsers = async (req: AuthRequest, res: Response) => {
   try {
-    const users = await prisma.user.findMany({
-      where: {
-        role: Role.FACULTY
-      },
-      include: {
-        department: true
+    const { role } = req.query;
+    let whereClause: any = {};
+    if (role) {
+      const upper = String(role).toUpperCase();
+      if (upper === "ALL") {
+        whereClause = {};
+      } else if (upper === "ADMIN") {
+        whereClause = { role: Role.ADMIN };
+      } else if (upper === "FACULTY") {
+        whereClause = { role: Role.FACULTY };
+      } else if (upper === "SUPER_ADMIN") {
+        whereClause = { role: Role.SUPER_ADMIN };
       }
+    } else {
+      whereClause = req.user?.role === Role.SUPER_ADMIN ? {} : { role: Role.FACULTY };
+    }
+
+    const users = await prisma.user.findMany({
+      where: whereClause,
+      include: {
+        department: true,
+        createdByAdmin: { select: { name: true, email: true } }
+      },
+      orderBy: { createdAt: "desc" }
     });
 
-    // Map to frontend expectation, extracting department string
+    // Map to frontend expectation
     const mappedUsers = users.map((u) => ({
       id: u.id,
       facultyId: u.facultyId,
@@ -28,7 +45,8 @@ export const getUsers = async (req: AuthRequest, res: Response) => {
       dateOfJoin: u.dateOfJoin ? u.dateOfJoin.toISOString().split("T")[0] : null,
       status: u.status,
       lastLogin: u.lastLogin ? u.lastLogin.toISOString() : null,
-      adminId: u.adminId
+      adminId: u.adminId,
+      createdByName: u.createdByAdmin?.name
     }));
 
     res.status(200).json({ users: mappedUsers });
@@ -40,7 +58,7 @@ export const getUsers = async (req: AuthRequest, res: Response) => {
 
 export const createUser = async (req: AuthRequest, res: Response) => {
   try {
-    const { name, email, phone, department, designation, dateOfJoin, facultyId, initialPassword, status } = req.body;
+    const { name, email, phone, department, designation, dateOfJoin, facultyId, initialPassword, status, role: reqRole } = req.body;
 
     if (!name || !email || !initialPassword) {
       return res.status(400).json({ message: "Name, email, and initial password are required" });
@@ -52,12 +70,20 @@ export const createUser = async (req: AuthRequest, res: Response) => {
       return res.status(409).json({ message: "Email already in use" });
     }
 
+    let targetRole: Role = Role.FACULTY;
+    if (reqRole) {
+      const upperRole = String(reqRole).toUpperCase();
+      if (upperRole === "ADMIN") {
+        if (req.user?.role !== Role.SUPER_ADMIN) {
+          return res.status(403).json({ message: "Only Super Admin can create Admin accounts" });
+        }
+        targetRole = Role.ADMIN;
+      }
+    }
+
     // Find or create Department
     let dbDepartment = null;
-    if (department) {
-      if (department !== "CSD" && department !== "CSIT") {
-        return res.status(400).json({ message: "Invalid department. Must be CSD or CSIT." });
-      }
+    if (department && department !== "None" && department !== "N/A") {
       dbDepartment = await prisma.department.findUnique({
         where: { name: department }
       });
@@ -72,7 +98,7 @@ export const createUser = async (req: AuthRequest, res: Response) => {
 
     const newUser = await prisma.user.create({
       data: {
-        facultyId: facultyId || null,
+        facultyId: targetRole === Role.FACULTY ? (facultyId || null) : null,
         name,
         email,
         phone: phone || null,
@@ -80,7 +106,7 @@ export const createUser = async (req: AuthRequest, res: Response) => {
         dateOfJoin: dateOfJoin ? new Date(dateOfJoin) : null,
         status: status || "Active",
         passwordHash,
-        role: Role.FACULTY,
+        role: targetRole,
         adminId: req.user?.id
       },
       include: {
@@ -103,7 +129,7 @@ export const createUser = async (req: AuthRequest, res: Response) => {
 
     // Create Audit Log non-blocking
     if (req.user) {
-      createAuditLog(req.user.id, "CREATE_USER", newUser.id, "System").catch(console.error);
+      createAuditLog(req.user.id, targetRole === Role.ADMIN ? "CREATE_ADMIN" : "CREATE_USER", newUser.id, "System").catch(console.error);
     }
     return res.status(201).json({ user: safeUser });
   } catch (error) {
@@ -118,10 +144,7 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
     const { name, email, phone, department, dateOfJoin, status } = req.body;
 
     let dbDepartment = null;
-    if (department) {
-      if (department !== "CSD" && department !== "CSIT") {
-        return res.status(400).json({ message: "Invalid department. Must be CSD or CSIT." });
-      }
+    if (department && department !== "None" && department !== "N/A") {
       dbDepartment = await prisma.department.findUnique({
         where: { name: department }
       });

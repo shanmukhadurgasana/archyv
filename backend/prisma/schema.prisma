@@ -95,6 +95,16 @@ model AcademicYear {
   documents Document[]
 }
 
+model Student {
+  id             String     @id @default(uuid())
+  registerNumber String     @unique
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  documents      Document[]
+
+  @@index([registerNumber])
+}
+
 model Document {
   id                               String            @id @default(uuid())
   name                             String
@@ -118,6 +128,8 @@ model Document {
   semester                         String?
   section                          String?
   yearOfStudy                      String?
+  studentId                        String?
+  studentRegisterNumber            String?
   isDeleted                        Boolean           @default(false)
   deletedAt                        DateTime?
   retentionUntil                   DateTime?
@@ -129,6 +141,7 @@ model Document {
   sectionRel                       Section?          @relation(fields: [sectionId], references: [id], onDelete: SetNull)
   domain                           Domain            @relation(fields: [domainId], references: [id])
   subdomain                        Subdomain?        @relation(fields: [subdomainId], references: [id])
+  student                          Student?          @relation(fields: [studentId], references: [id], onDelete: SetNull)
   User_Document_rejectedByIdToUser User?             @relation("Document_rejectedByIdToUser", fields: [rejectedById], references: [id])
   uploadedBy                       User?             @relation("UploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
   starredByUsers                   StarredDocument[]
@@ -140,6 +153,8 @@ model Document {
   @@index([sectionId])
   @@index([domainId])
   @@index([academicYearId])
+  @@index([studentId])
+  @@index([studentRegisterNumber])
   @@index([deletedAt])
   @@index([createdAt])
   @@index([isDeleted])
@@ -174,6 +189,7 @@ model AuditLog {
 }
 
 enum Role {
+  SUPER_ADMIN
   ADMIN
   FACULTY
 }

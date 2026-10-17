@@ -22,24 +22,28 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
       ];
     }
 
-    // Fetch documents and domains concurrently
+    // Fetch documents, domains, admins, departments, academic years concurrently
     const domainsPromise = prisma.domain.findMany();
+    const totalAdminPromise = prisma.user.count({ where: { role: 'ADMIN' } });
+    const totalDepartmentsPromise = prisma.department.count();
+    const totalAcademicYearsPromise = prisma.academicYear.count();
     
-    // Instead of Prisma groupBy which doesn't support relation filters,
-    // we fetch the required scalar fields and aggregate in memory.
     const allowedDocsPromise = prisma.document.findMany({
       where: baseWhere,
-      select: { sizeBytes: true, isDeleted: true, domainId: true, status: true }
+      select: { 
+        sizeBytes: true, 
+        isDeleted: true, 
+        domainId: true, 
+        status: true,
+        uploadedBy: { select: { role: true } }
+      }
     });
     
     let facultyWhere: any = { role: 'FACULTY' };
-    if ((userRole as string) === 'ADMIN' || (userRole as string) === 'admin') {
-      // Global organization access
-    }
     const totalFacultyPromise = prisma.user.count({ where: facultyWhere });
     
     let auditWhere: any = {};
-    if ((userRole as string) === 'ADMIN' || (userRole as string) === 'admin') {
+    if ((userRole as string) === 'ADMIN' || (userRole as string) === 'admin' || (userRole as string) === 'SUPER_ADMIN') {
       // Global organization access
     } else {
       auditWhere.userId = userId;
@@ -54,10 +58,13 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
     });
 
     // Await all parallel promises
-    const [domains, allowedDocs, totalFaculty, rawAuditLogs] = await Promise.all([
+    const [domains, allowedDocs, totalFaculty, totalAdmin, totalDepartments, totalAcademicYears, rawAuditLogs] = await Promise.all([
       domainsPromise,
       allowedDocsPromise,
       totalFacultyPromise,
+      totalAdminPromise,
+      totalDepartmentsPromise,
+      totalAcademicYearsPromise,
       rawAuditLogsPromise
     ]);
 
@@ -66,6 +73,8 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
     let pendingDocuments = 0;
     let rejectedDocuments = 0;
     let trashDocuments = 0;
+    let facultyFilesCount = 0;
+    let adminFilesCount = 0;
     const domainCountsMap = new Map<string, number>();
 
     allowedDocs.forEach(doc => {
@@ -77,6 +86,11 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
           totalDocuments++;
           if (doc.domainId) {
             domainCountsMap.set(doc.domainId, (domainCountsMap.get(doc.domainId) || 0) + 1);
+          }
+          if (doc.uploadedBy?.role === 'FACULTY') {
+            facultyFilesCount++;
+          } else if (doc.uploadedBy?.role === 'ADMIN' || doc.uploadedBy?.role === 'SUPER_ADMIN') {
+            adminFilesCount++;
           }
         } else if (doc.status === 'PENDING') {
           pendingDocuments++;
@@ -104,10 +118,17 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
       success: true,
       stats: {
         totalDocuments,
+        totalFiles: totalDocuments,
         pendingDocuments,
         rejectedDocuments,
         trashDocuments,
         totalFaculty,
+        totalAdmin,
+        totalDepartments,
+        totalDomains: domains.length,
+        totalAcademicYears,
+        facultyFilesCount,
+        adminFilesCount,
         totalBytes,
         domainStats,
         recentActivity

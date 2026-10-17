@@ -98,10 +98,11 @@ export const deleteAcademicYear = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ success: false, message: "Academic year not found" });
     }
 
-    const docsCount = await prisma.document.count({ where: { academicYearId: id } });
-    if (docsCount > 0) {
-      return res.status(400).json({ success: false, message: "Cannot delete academic year with associated documents" });
-    }
+    // Unlink any documents referencing this academic year
+    await prisma.document.updateMany({
+      where: { academicYearId: id },
+      data: { academicYearId: null }
+    });
 
     await prisma.academicYear.delete({ where: { id } });
 

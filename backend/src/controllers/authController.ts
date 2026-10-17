@@ -10,38 +10,9 @@ import { Role } from "@prisma/client";
 import { createAuditLog } from "../services/audit.service";
 
 export const signup = async (req: Request, res: Response) => {
-  try {
-    const { name, email, password } = req.body;
-
-    if (!name || !email || !password) {
-      return res.status(400).json({ message: "Name, email, and password are required" });
-    }
-
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
-    });
-
-    if (existingUser) {
-      return res.status(400).json({ message: "Email already in use" });
-    }
-
-    const passwordHash = await bcrypt.hash(password, 12);
-
-    const user = await prisma.user.create({
-      data: {
-        name,
-        email,
-        passwordHash,
-        role: Role.ADMIN,
-        status: "Active",
-      },
-    });
-
-    res.status(201).json({ message: "Admin created successfully", user: { id: user.id, email: user.email } });
-  } catch (error) {
-    console.error("Signup error:", error);
-    res.status(500).json({ message: "Internal server error" });
-  }
+  return res.status(403).json({
+    message: "Direct administrator registration is disabled. Administrator accounts can only be created by the Super Administrator."
+  });
 };
 
 export const login = async (req: Request, res: Response) => {

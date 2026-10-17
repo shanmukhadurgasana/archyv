@@ -86,8 +86,10 @@ interface AppContextType extends Omit<AppState, "currentUser"> {
     semester?: string | null;
   }) => Promise<{ success: boolean; document?: Document; error?: string }>;
   updateDocumentContent: (id: string, payload: { file?: File; content?: string; csvData?: string; mimeType?: string }) => Promise<{ success: boolean; message?: string; error?: string }>;
+  duplicateDocument: (id: string) => Promise<{ success: boolean; document?: Document; error?: string }>;
   toggleStar: (docId: string) => void;
   createFaculty: (user: any) => Promise<{ success: boolean; error?: string }>;
+  createAdmin: (admin: any) => Promise<{ success: boolean; error?: string; user?: any }>;
   deleteFaculty: (id: string) => Promise<void>;
   updateFaculty: (id: string, updates: any) => Promise<void>;
   updateUserProfile: (updates: Partial<User>) => void;
@@ -124,7 +126,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const fetchUsers = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/users`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/users?role=all`, {
         credentials: "include",
       });
       if (response.ok) {
@@ -271,7 +273,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (documents.length === 0) {
       setIsDataLoading(true);
     }
-    const isAdmin = user.role.toLowerCase() === 'admin';
+    const isAdmin = user.role?.toLowerCase() === 'admin' || user.role?.toLowerCase() === 'superadmin' || user.role?.toLowerCase() === 'super_admin';
 
     // Load critical data
     await Promise.allSettled([
@@ -297,7 +299,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setIsRefreshing(true);
     try {
       const activeUser = currentUser || (typeof window !== "undefined" && JSON.parse(localStorage.getItem("archyv_user") || "null"));
-      const isAdmin = activeUser?.role?.toLowerCase() === 'admin';
+      const isAdmin = activeUser?.role?.toLowerCase() === 'admin' || activeUser?.role?.toLowerCase() === 'superadmin' || activeUser?.role?.toLowerCase() === 'super_admin';
 
       await Promise.allSettled([
         fetchDocuments(),
@@ -505,7 +507,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const deleteDocument = async (id: string) => {
-    if (currentUser?.role.toLowerCase() !== "admin") return;
+    const role = currentUser?.role?.toLowerCase();
+    if (role !== "admin" && role !== "superadmin" && role !== "super_admin") return;
 
     // Grab the document before it's deleted to move it to trash optimistically
     const docToDelete = documents.find(d => d.id === id) || pendingDocuments.find(d => d.id === id);
@@ -830,6 +833,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const duplicateDocument = async (id: string) => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/documents/${id}/duplicate`, {
+        method: 'POST',
+        headers: { "Content-Type": "application/json" },
+        credentials: "include"
+      });
+      const data = await response.json();
+      if (response.ok && data.success && data.document) {
+        setDocuments(prev => [data.document, ...prev]);
+        if (dashboardStats) {
+          setDashboardStats((prev: any) => ({
+            ...prev,
+            totalDocuments: (prev.totalDocuments || 0) + 1,
+            totalFiles: (prev.totalFiles || prev.totalDocuments || 0) + 1,
+          }));
+        }
+        return { success: true, document: data.document };
+      }
+      return { success: false, error: data.message || "Failed to duplicate document" };
+    } catch (e: any) {
+      console.error("Failed to duplicate document:", e);
+      return { success: false, error: e?.message || "Network error" };
+    }
+  };
+
   const toggleStar = async (docId: string) => {
     if (!currentUser) return;
 
@@ -901,6 +930,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return { success: false, error: errData.message || "Failed to create faculty" };
     } catch (e) {
       console.error("Failed to create faculty:", e);
+      return { success: false, error: "Network error occurred" };
+    }
+  };
+
+  const createAdmin = async (adminData: any) => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/users`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ ...adminData, role: "ADMIN" })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setUsers(prev => [...prev, data.user]);
+        await fetchDashboardStats();
+        return { success: true, user: data.user };
+      }
+      const errData = await response.json().catch(() => ({}));
+      return { success: false, error: errData.message || "Failed to create admin" };
+    } catch (e: any) {
+      console.error("Failed to create admin:", e);
       return { success: false, error: "Network error occurred" };
     }
   };
@@ -1001,8 +1052,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     updateDocumentAccess,
     updateDocument,
     updateDocumentContent,
+    duplicateDocument,
     toggleStar,
     createFaculty,
+    createAdmin,
     deleteFaculty,
     updateFaculty,
     updateUserProfile,

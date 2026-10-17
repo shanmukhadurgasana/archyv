@@ -1,6 +1,6 @@
 "use client";
 
-import { Star, Trash2, CheckCircle, XCircle, MoreVertical, Download, ExternalLink, Pencil, Eye, Share2, Shield, FileSpreadsheet, FileText, CheckCheck } from "lucide-react";
+import { Star, Trash2, CheckCircle, XCircle, MoreVertical, Download, ExternalLink, Pencil, Eye, Share2, Shield, FileSpreadsheet, FileText, CheckCheck, Copy } from "lucide-react";
 import Image from "next/image";
 import { useState, useRef, useEffect } from "react";
 import { usePathname } from "next/navigation";
@@ -20,7 +20,7 @@ interface FileRowProps {
 }
 
 export default function FileRow({ file, showActions = true, isTrash = false }: FileRowProps) {
-  const { toggleStar, deleteDocument, restoreDocument, permanentDeleteDocument, currentUser, starredDocs, approveDocument, declineDocument } = useAppContext();
+  const { toggleStar, deleteDocument, restoreDocument, permanentDeleteDocument, currentUser, starredDocs, approveDocument, declineDocument, duplicateDocument } = useAppContext();
   const pathname = usePathname();
   
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -58,7 +58,12 @@ export default function FileRow({ file, showActions = true, isTrash = false }: F
   const userStarredIds = currentUser ? starredDocs[currentUser.id] : undefined;
   const isStarred = userStarredIds !== undefined ? userStarredIds.includes(file.id) : Boolean(file.isStarred);
 
-  const isAdmin = currentUser?.role?.toLowerCase() === 'admin';
+  const isAdminRole = currentUser?.role?.toLowerCase() === 'admin' || 
+                      currentUser?.role?.toLowerCase() === 'superadmin' || 
+                      currentUser?.role?.toLowerCase() === 'super_admin';
+  const isFacultyDashboard = pathname.startsWith('/faculty');
+  const isAdminDashboard = pathname.startsWith('/admin') || pathname.startsWith('/superadmin');
+  const isAdmin = isFacultyDashboard ? false : (isAdminDashboard || isAdminRole);
   const isPendingAdmin = isAdmin && (pathname.includes('/pending') || file.status === 'PENDING');
   const isUploader = Boolean(
     (currentUser?.id && file.uploadedById === currentUser.id) ||
@@ -69,32 +74,44 @@ export default function FileRow({ file, showActions = true, isTrash = false }: F
     (file.accessType === 'SELECT_FACULTY' && (file.facultyAccess || []).some((fa: any) => (fa.facultyId || fa) === currentUser?.id));
   const canEdit = isAdmin || isUploader || Boolean(file.canEdit) || isFacultyGranted;
   
-  const { isCsvOrExcel, canOpenInNewTab } = getFileCategory(file.name, file.type, file.mimeType);
+  const { isPicture } = getFileCategory(file.name, file.type, file.mimeType);
 
   const handleOpenFile = (e?: React.MouseEvent) => {
     if (e) {
       e.preventDefault();
       e.stopPropagation();
     }
+    setIsMenuOpen(false);
     const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
 
-    if (isCsvOrExcel) {
-      setShowDocEditor(true);
-    } else if (canOpenInNewTab) {
+    if (isPicture) {
+      // Images open directly in a new browser tab with inline view
       window.open(`${baseUrl}/documents/${file.id}/view?inline=true`, "_blank");
     } else {
-      const newTab = window.open(`${baseUrl}/documents/${file.id}/view`, "_blank");
-      if (!newTab || newTab.closed || typeof newTab.closed === 'undefined') {
-        triggerFileDownload(file);
-      }
+      // Spreadsheets, Word, PDF, and other documents open in website viewer & editor modal
+      setShowDocEditor(true);
     }
   };
+
+  const handleOpenInNewTab = handleOpenFile;
 
   const handleDownloadFile = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setIsMenuOpen(false);
     triggerFileDownload(file);
+  };
+
+  const handleDuplicateFile = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    setIsMenuOpen(false);
+    const result = await duplicateDocument(file.id);
+    if (!result.success) {
+      alert(result.error || "Failed to duplicate file");
+    }
   };
 
   const handleNativeShare = async () => {
@@ -332,36 +349,15 @@ export default function FileRow({ file, showActions = true, isTrash = false }: F
                         </button>
                         </>
                       ) : (
-                        /* 1) files in admin dashboard -> open in newtab/spreadsheet(with edit access), download, rename, share, access, delete */
+                        /* Admin Dashboard: Open, Download, Rename, Duplicate, Share, Access, Delete */
                         <>
-                        {isCsvOrExcel ? (
                           <button
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setIsMenuOpen(false);
-                              setShowDocEditor(true);
-                            }}
-                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors font-medium flex items-center gap-2"
-                          >
-                            <FileSpreadsheet className="w-3.5 h-3.5 text-gray-500" />
-                            Open Spreadsheet
-                          </button>
-                        ) : canOpenInNewTab ? (
-                          <button
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setIsMenuOpen(false);
-                              const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
-                              window.open(`${baseUrl}/documents/${file.id}/view?inline=true`, "_blank");
-                            }}
+                            onClick={handleOpenInNewTab}
                             className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors font-medium flex items-center gap-2"
                           >
                             <ExternalLink className="w-3.5 h-3.5 text-gray-500" />
-                            Open in New Tab
+                            Open
                           </button>
-                        ) : null}
 
                           <button
                             onClick={handleDownloadFile}
@@ -383,6 +379,14 @@ export default function FileRow({ file, showActions = true, isTrash = false }: F
                           >
                             <Pencil className="w-3.5 h-3.5 text-gray-500" />
                             Rename
+                          </button>
+
+                          <button
+                            onClick={handleDuplicateFile}
+                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors font-medium flex items-center gap-2"
+                          >
+                            <Copy className="w-3.5 h-3.5 text-gray-500" />
+                            Duplicate
                           </button>
 
                           <button
@@ -428,36 +432,15 @@ export default function FileRow({ file, showActions = true, isTrash = false }: F
                     ) : (
                       /* Faculty Dashboard */
                       canEdit ? (
-                        /* 4) in faculty dashboard files with edit access -> open in newtab/spreadsheet(with edit access), download, rename, share */
+                        /* Faculty Dashboard (Edit Access): Open, Download, Rename, Share */
                         <>
-                        {isCsvOrExcel ? (
                           <button
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setIsMenuOpen(false);
-                              setShowDocEditor(true);
-                            }}
-                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors font-medium flex items-center gap-2"
-                          >
-                            <FileSpreadsheet className="w-3.5 h-3.5 text-gray-500" />
-                            Open Spreadsheet
-                          </button>
-                        ) : canOpenInNewTab ? (
-                          <button
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setIsMenuOpen(false);
-                              const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
-                              window.open(`${baseUrl}/documents/${file.id}/view?inline=true`, "_blank");
-                            }}
+                            onClick={handleOpenInNewTab}
                             className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors font-medium flex items-center gap-2"
                           >
                             <ExternalLink className="w-3.5 h-3.5 text-gray-500" />
-                            Open in New Tab
+                            Open
                           </button>
-                        ) : null}
 
                           <button
                             onClick={handleDownloadFile}
@@ -495,36 +478,15 @@ export default function FileRow({ file, showActions = true, isTrash = false }: F
                           </button>
                         </>
                       ) : (
-                        /* 3) in faculty dashboard file swith only view access -> view in newtab/spread sheet, download, view details, share */
+                        /* Faculty Dashboard (View Access): Open, Download, View Details, Share */
                         <>
-                        {isCsvOrExcel ? (
                           <button
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setIsMenuOpen(false);
-                              setShowDocEditor(true);
-                            }}
-                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors font-medium flex items-center gap-2"
-                          >
-                            <FileSpreadsheet className="w-3.5 h-3.5 text-gray-500" />
-                            View Spreadsheet
-                          </button>
-                        ) : canOpenInNewTab ? (
-                          <button
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setIsMenuOpen(false);
-                              const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
-                              window.open(`${baseUrl}/documents/${file.id}/view?inline=true`, "_blank");
-                            }}
+                            onClick={handleOpenInNewTab}
                             className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors font-medium flex items-center gap-2"
                           >
                             <ExternalLink className="w-3.5 h-3.5 text-gray-500" />
-                            View in New Tab
+                            Open
                           </button>
-                        ) : null}
 
                           <button
                             onClick={handleDownloadFile}
@@ -542,7 +504,7 @@ export default function FileRow({ file, showActions = true, isTrash = false }: F
                               setIsRenameAndApprove(false);
                               setShowEditModal(true);
                             }}
-                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
+                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors font-medium flex items-center gap-2"
                           >
                             <Eye className="w-3.5 h-3.5 text-gray-500" />
                             View Details
@@ -609,6 +571,7 @@ export default function FileRow({ file, showActions = true, isTrash = false }: F
       <DocumentEditorModal
         isOpen={showDocEditor}
         document={file}
+        canEdit={canEdit}
         onClose={() => setShowDocEditor(false)}
         onOpenTitleEdit={() => setShowEditModal(true)}
       />
